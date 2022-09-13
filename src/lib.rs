@@ -40,12 +40,14 @@ use secp256k1::{Secp256k1, SecretKey};
 use sha2::{Digest, Sha256};
 
 pub const IS_TESTNET: bool = true;
+pub const HARDENED_DERIVATION_CHARACTER: &str = "'";
 
 #[derive(Debug, Clone)]
 pub struct Keys {
     pub private_key_hex: String,
     pub public_key_hex: String,
     pub chain_code_hex: String,
+    pub is_hardened: bool,
 }
 impl Keys {
     pub fn get_wif(&self) -> String {
@@ -391,6 +393,7 @@ pub fn get_hardened_child_extended_private_key(
         private_key_hex: child_private_key,
         public_key_hex: child_public_key,
         chain_code_hex: child_chain_code,
+        is_hardened: true,
     };
     keys
 }
@@ -430,6 +433,7 @@ pub fn get_child_extended_private_key(
         private_key_hex: child_private_key,
         public_key_hex: child_public_key,
         chain_code_hex: child_chain_code,
+        is_hardened: false,
     };
     keys
 }
@@ -531,41 +535,90 @@ pub fn get_master_keys_from_seed(bip39_seed: String) -> Keys {
         public_key_hex: master_public_key,
         private_key_hex: master_private_key_hex,
         chain_code_hex: encode_hex(master_chain_code),
+        // TODO: Is this correct? Is there a way to harden master keys?
+        is_hardened: false,
     };
     keys
 }
 
-pub fn parse_derivation_path(derivation_path: String) -> Vec<u64> {
+pub enum DerivationChild {
+    NonHardened(u32),
+    Hardened(u32),
+}
+
+pub fn parse_derivation_path_child(derivation_path_child: &String) -> DerivationChild {
+    let child_split_into_hardened_key: Vec<&str> = derivation_path_child
+        .split(HARDENED_DERIVATION_CHARACTER)
+        .collect();
+    let is_hardened = child_split_into_hardened_key.len() == 2;
+    let child_index = child_split_into_hardened_key
+        .get(0)
+        .unwrap()
+        .parse()
+        .unwrap();
+    if is_hardened {
+        DerivationChild::Hardened(child_index)
+    } else {
+        DerivationChild::NonHardened(child_index)
+    }
+}
+pub fn get_child_index_from_derivation_path(derivation_path: &String) -> DerivationChild {
     let derivation_path_split_by_dash: Vec<&str> = derivation_path.split('/').collect();
     let first = derivation_path_split_by_dash.first().unwrap();
     if first.to_string() != "m" {
         panic!("derivation must start with m")
     } else {
-        let derivation_path_indexes: Vec<u64> = derivation_path_split_by_dash[1..]
+        let last_item = derivation_path_split_by_dash.last().unwrap().to_string();
+        parse_derivation_path_child(&last_item)
+    }
+}
+
+pub fn split_derivation_path(derivation_path: String) -> Vec<String> {
+    let derivation_path_split_by_dash: Vec<&str> = derivation_path.split('/').collect();
+    let first = derivation_path_split_by_dash.first().unwrap();
+    if first.to_string() != "m" {
+        panic!("derivation must start with m")
+    } else {
+        // TODO: factor in hardened vs non-hardened keys here
+        let derivation_path_indexes: Vec<String> = derivation_path_split_by_dash[1..]
             .iter()
-            .map(|s| s.parse().unwrap())
+            .map(|s| s.to_string())
             .collect();
-        return derivation_path_indexes;
+        derivation_path_indexes
     }
 }
 
 pub fn get_child_key_from_derivation_path(derivation_path: String, master_keys: Keys) -> Keys {
-    let derivation_path_indexes = parse_derivation_path(derivation_path);
+    let derivation_path_indexes = split_derivation_path(derivation_path);
     let mut current_parent_keys = master_keys;
-    for i in derivation_path_indexes {
-        let child_keys = get_child_key(&current_parent_keys, i as i32, false);
+    // TODO: factor in hardened vs non-hardened keys here
+    for derivation_path_item in derivation_path_indexes {
+        let derivation_child = parse_derivation_path_child(&derivation_path_item);
+
+        let child_keys = match derivation_child {
+            DerivationChild::NonHardened(child_index) => {
+                let is_hardened = false;
+                get_child_key(&current_parent_keys, child_index as i32, is_hardened)
+            }
+            DerivationChild::Hardened(child_index) => {
+                let is_hardened = true;
+                get_child_key(&current_parent_keys, child_index as i32, is_hardened)
+            }
+        };
+        //get_child_key(&current_parent_keys, i as i32, false);
         current_parent_keys = child_keys;
     }
 
     current_parent_keys
 }
-pub fn get_child_keys_from_derivation_path(
+pub fn get_children_keys_from_derivation_path(
     derivation_path: &String,
     master_keys: Keys,
     children_count: i32,
+    should_be_hardened: bool,
 ) -> HashMap<String, Keys> {
-    let child_keys = get_child_key_from_derivation_path(derivation_path.to_string(), master_keys);
-    let child_keys = get_child_keys(&child_keys, children_count, false);
+    let child_key = get_child_key_from_derivation_path(derivation_path.to_string(), master_keys);
+    let child_keys = get_child_keys(&child_key, children_count, should_be_hardened);
     child_keys
 }
 pub fn get_child_key(parent_keys: &Keys, child_index: i32, hardened: bool) -> Keys {
@@ -589,11 +642,11 @@ pub fn get_child_key(parent_keys: &Keys, child_index: i32, hardened: bool) -> Ke
 pub fn get_child_keys(
     parent_keys: &Keys,
     children_count: i32,
-    hardened: bool,
+    should_be_hardened: bool,
 ) -> HashMap<String, Keys> {
     let mut children = HashMap::new();
     for child_index in 0..=children_count {
-        if hardened {
+        if should_be_hardened {
             let child_keys_hardened = get_child_key(parent_keys, child_index as i32, true);
             let hash_key = format!("{}'", child_index);
             children.insert(hash_key, child_keys_hardened);

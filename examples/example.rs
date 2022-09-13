@@ -1,9 +1,9 @@
 use bitcoin_hd_keys::{
     concat_u8, convert_decimal_to_32_byte_hex_with, convert_decimal_to_8_byte_hex_with, decode_hex,
     encode_hex, get_256_bits_of_entropy, get_bip38_512_bit_private_key,
-    get_child_key_from_derivation_path, get_child_keys_from_derivation_path,
-    get_master_keys_from_seed, get_mnemonic_words, serialize_key, Keys, SerializeKeyArgs,
-    IS_TESTNET,
+    get_child_index_from_derivation_path, get_child_key_from_derivation_path,
+    get_children_keys_from_derivation_path, get_master_keys_from_seed, get_mnemonic_words,
+    serialize_key, DerivationChild, Keys, SerializeKeyArgs, IS_TESTNET,
 };
 use std::fmt::Write;
 use std::num::{NonZeroU32, ParseIntError};
@@ -43,26 +43,17 @@ fn get_parent_derivation_path(derivation_path: &String) -> String {
             .join("/")
     }
 }
-fn get_child_index_from_derivation_path(derivation_path: &String) -> u32 {
-    let derivation_path_split_by_dash: Vec<&str> = derivation_path.split('/').collect();
-    let first = derivation_path_split_by_dash.first().unwrap();
-    if first.to_string() != "m" {
-        panic!("derivation must start with m")
-    } else {
-        derivation_path_split_by_dash
-            .last()
-            .unwrap()
-            .to_string()
-            .parse()
-            .unwrap()
-    }
-}
+
 fn get_extended_keys_from_derivation_path(
     derivation_path: &String,
     master_keys: &Keys,
 ) -> (String, String) {
     let parent_deviation_path = get_parent_derivation_path(derivation_path);
-    let child_index = get_child_index_from_derivation_path(derivation_path);
+    let derivation_child = get_child_index_from_derivation_path(derivation_path);
+    let derivation_child_index = match derivation_child {
+        DerivationChild::NonHardened(child_index) => child_index,
+        DerivationChild::Hardened(child_index) => child_index,
+    };
     let found_child =
         get_child_key_from_derivation_path(derivation_path.to_string(), master_keys.clone());
     let parent_keys =
@@ -76,7 +67,7 @@ fn get_extended_keys_from_derivation_path(
         is_public: true,
         is_testnet: IS_TESTNET,
         depth: Some(depth),
-        child_index: child_index as u32,
+        child_index: derivation_child_index as u32,
     });
     let bip32_extended_private_key = serialize_key(SerializeKeyArgs {
         key: found_child.private_key_hex.clone(),
@@ -85,7 +76,7 @@ fn get_extended_keys_from_derivation_path(
         is_public: false,
         is_testnet: IS_TESTNET,
         depth: Some(depth),
-        child_index: child_index as u32,
+        child_index: derivation_child_index as u32,
     });
     (bip32_extended_public_key, bip32_extended_private_key)
 }
@@ -110,9 +101,9 @@ fn main() {
 
     // HARDCODED FOR TESTING
     // let bip39_seed = "67f93560761e20617de26e0cb84f7234aaf373ed2e66295c3d7397e6d7ebe882ea396d5d293808b0defd7edd2babd4c091ad942e6a9351e6d075a29d4df872af".to_string();
-    // let bip39_seed = "029444d3ce936472cdd5a0a80aee9bae8fb849a489718c60fbe10783a3ec2a828693538fe12398a3db3c44b1dda57e50a02dee88914184617cad1d307fbb7922".to_string();
+    let bip39_seed = "887d2455533e126c9a74fc4e97d085eb77a8491d30f4434022fbc588afe4f0fdbb1b91876e7d3dff6bbe6f8249b0921f1c160006068472bc6e8fd3575599bd13".to_string();
     let passphrase = "".to_string();
-    let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
+    // let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
     println!("BIP39 SEED: {}", bip39_seed);
     //
 
@@ -133,18 +124,19 @@ fn main() {
     println!("MASTER ADDRESS: {}", master_keys.get_address(),);
     // ======================================================
 
-    let derivation_path = "m/0/0/1/4".to_string();
+    let derivation_path = "m/0/0/1/4'".to_string();
 
-    let (bip32_extended_public_key, bip32_extended_private_key) =
-        get_extended_keys_from_derivation_path(&derivation_path, &master_keys);
-    println!(
-        "bip32_extended_public_key!: {:#?}",
-        bip32_extended_public_key
-    );
-    println!(
-        "bip32_extended_private_key: {:#?}",
-        bip32_extended_private_key
-    );
+    // let (bip32_extended_public_key, bip32_extended_private_key) =
+    //     get_extended_keys_from_derivation_path(&derivation_path, &master_keys);
+    // println!(
+    //     "bip32_extended_public_key!: {:#?}",
+    //     bip32_extended_public_key
+    // );
+    // println!(
+    //     "bip32_extended_private_key: {:#?}",
+    //     bip32_extended_private_key
+    // );
+
     // let found_child = get_child_key_from_derivation_path("m/0".to_string(), master_keys.clone());
 
     // let found_child_xpub = serialize_key(SerializeKeyArgs {
@@ -171,7 +163,13 @@ fn main() {
     // println!("found child address!: {:#?}", found_child.get_address());
     // println!("found child wif!: {:#?}", found_child.get_wif());
 
-    let found_children = get_child_keys_from_derivation_path(&derivation_path, master_keys, 5);
+    let should_be_hardened = false;
+    let found_children = get_children_keys_from_derivation_path(
+        &derivation_path,
+        master_keys,
+        5,
+        should_be_hardened,
+    );
     for (key, value) in found_children {
         println!(
             "{}/{}   {}     {}          {}",
