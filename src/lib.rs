@@ -204,6 +204,7 @@ pub struct SerializeKeyArgs {
     pub is_testnet: bool,
     pub depth: Option<u8>,
     pub child_index: u32,
+    pub is_hardened: bool,
 }
 
 pub fn serialize_key(args: SerializeKeyArgs) -> String {
@@ -215,6 +216,7 @@ pub fn serialize_key(args: SerializeKeyArgs) -> String {
         is_testnet,
         depth,
         child_index,
+        is_hardened,
     } = args;
     fn create_fingerprint(parent_public_key_hex: String) -> String {
         let hex_byte_array = decode_hex(&parent_public_key_hex).unwrap();
@@ -282,10 +284,7 @@ pub fn serialize_key(args: SerializeKeyArgs) -> String {
         format!("{}{}", "00", key)
     };
 
-    // TODO: How do we change this
     let depth = convert_decimal_to_8_byte_hex_with(depth.unwrap_or(0));
-    // TODO: Make it work for root and child
-    // for root
     let parent_fingerprint = match &parent_public_key {
         Some(parent_public_key) => create_fingerprint(parent_public_key.to_string()),
         None => "00000000".to_string(),
@@ -293,7 +292,12 @@ pub fn serialize_key(args: SerializeKeyArgs) -> String {
     // for child
     // let parent_fingerprint = create_fingerprint(parent_public_key.to_string());
     // TODO: How do we do children at other indexes other than 0. Like 1.
-    let child_number = convert_decimal_to_32_byte_hex_with(child_index);
+    let child_index_with_hardened_factored_in = if is_hardened {
+        child_index + 2147483648 // # child index number (must between 2**31 and 2**32-1)
+    } else {
+        child_index
+    };
+    let child_number = convert_decimal_to_32_byte_hex_with(child_index_with_hardened_factored_in);
     let chain_code = child_chain_code;
     // let key = format!("{}{}", "00", private_key);
     let serialized = format!(
@@ -541,6 +545,7 @@ pub fn get_master_keys_from_seed(bip39_seed: String) -> Keys {
     keys
 }
 
+#[derive(Debug)]
 pub enum DerivationChild {
     NonHardened(u32),
     Hardened(u32),
@@ -597,12 +602,12 @@ pub fn get_child_key_from_derivation_path(derivation_path: String, master_keys: 
 
         let child_keys = match derivation_child {
             DerivationChild::NonHardened(child_index) => {
-                let is_hardened = false;
-                get_child_key(&current_parent_keys, child_index as i32, is_hardened)
+                let should_harden = false;
+                get_child_key(&current_parent_keys, child_index as i32, should_harden)
             }
             DerivationChild::Hardened(child_index) => {
-                let is_hardened = true;
-                get_child_key(&current_parent_keys, child_index as i32, is_hardened)
+                let should_harden = true;
+                get_child_key(&current_parent_keys, child_index as i32, should_harden)
             }
         };
         //get_child_key(&current_parent_keys, i as i32, false);
@@ -621,10 +626,10 @@ pub fn get_children_keys_from_derivation_path(
     let child_keys = get_child_keys(&child_key, children_count, should_be_hardened);
     child_keys
 }
-pub fn get_child_key(parent_keys: &Keys, child_index: i32, hardened: bool) -> Keys {
+pub fn get_child_key(parent_keys: &Keys, child_index: i32, should_harden: bool) -> Keys {
     let parent_chain_code_bytes = decode_hex(&parent_keys.chain_code_hex).unwrap();
     let parent_private_key_bytes = decode_hex(&parent_keys.private_key_hex).unwrap();
-    if hardened {
+    if should_harden {
         get_hardened_child_extended_private_key(
             &parent_chain_code_bytes,
             &parent_private_key_bytes,
@@ -684,6 +689,7 @@ pub fn print_child_keys(parent_keys: Keys, children_count: i32) {
             is_testnet: IS_TESTNET,
             depth: Some(1),
             child_index: child_index as u32,
+            is_hardened: child_keys.is_hardened,
         });
         let xprv = serialize_key(SerializeKeyArgs {
             key: child_keys.private_key_hex,
@@ -693,6 +699,7 @@ pub fn print_child_keys(parent_keys: Keys, children_count: i32) {
             is_testnet: IS_TESTNET,
             depth: Some(1),
             child_index: child_index as u32,
+            is_hardened: child_keys.is_hardened,
         });
         println!("{} xpub: {}", child_index, xpub);
         println!("{} xprv: {}", child_index, xprv);
@@ -726,6 +733,7 @@ pub fn print_child_keys(parent_keys: Keys, children_count: i32) {
             is_testnet: IS_TESTNET,
             depth: Some(1),
             child_index: child_index as u32,
+            is_hardened: child_keys_hardened.is_hardened,
         });
         let xprv = serialize_key(SerializeKeyArgs {
             key: child_keys_hardened.private_key_hex,
@@ -735,6 +743,7 @@ pub fn print_child_keys(parent_keys: Keys, children_count: i32) {
             is_testnet: IS_TESTNET,
             depth: Some(1),
             child_index: child_index as u32,
+            is_hardened: child_keys_hardened.is_hardened,
         });
         println!("{}' xpub: {}", child_index, xpub);
         println!("{}' xprv: {}", child_index, xprv);
@@ -917,4 +926,77 @@ pub fn get_public_key_hash(public_key: &String) -> String {
     let public_key_sha256_as_hex_array = decode_hex(&public_key_sha256).unwrap();
     let public_key_ripemd160 = ripemd160::Hash::hash(&public_key_sha256_as_hex_array);
     public_key_ripemd160.to_string()
+}
+
+pub fn get_depth_from_derivation_path(derivation_path: &String) -> u8 {
+    let derivation_path_split_by_dash: Vec<&str> = derivation_path.split('/').collect();
+    let first = derivation_path_split_by_dash.first().unwrap();
+    if first.to_string() != "m" {
+        panic!("derivation must start with m")
+    } else {
+        let derivation_path_without_m = derivation_path_split_by_dash.get(1..).unwrap();
+        let depth = derivation_path_without_m.len() as u8;
+        depth
+    }
+}
+pub fn get_parent_derivation_path(derivation_path: &String) -> String {
+    let derivation_path_split_by_dash: Vec<&str> = derivation_path.split('/').collect();
+    let first = derivation_path_split_by_dash.first().unwrap();
+    if first.to_string() != "m" {
+        panic!("derivation must start with m")
+    } else {
+        derivation_path_split_by_dash
+            .get(0..=derivation_path_split_by_dash.len() - 2)
+            .unwrap()
+            .join("/")
+    }
+}
+
+pub fn get_extended_keys_from_derivation_path(
+    derivation_path: &String,
+    master_keys: &Keys,
+) -> (String, String) {
+    let parent_deviation_path = get_parent_derivation_path(derivation_path);
+    let derivation_child = get_child_index_from_derivation_path(derivation_path);
+    println!("parent_deviation_path: {:?}", parent_deviation_path);
+    println!("derivation_child: {:#?}", derivation_child);
+    let derivation_child_index = match derivation_child {
+        DerivationChild::NonHardened(child_index) => child_index,
+        DerivationChild::Hardened(child_index) => child_index,
+    };
+    println!("derivation_child_index: {:#?}", derivation_child_index);
+    let found_child =
+        get_child_key_from_derivation_path(derivation_path.to_string(), master_keys.clone());
+    println!("found_child: {:?}", found_child);
+    println!("wif: {:#?}", found_child.get_wif());
+    println!("address: {:#?}", found_child.get_address());
+    let parent_keys =
+        get_child_key_from_derivation_path(parent_deviation_path, master_keys.clone());
+    println!("parent: {:?}", parent_keys);
+    println!("wif: {:#?}", parent_keys.get_wif());
+    println!("address: {:#?}", parent_keys.get_address());
+    let depth = get_depth_from_derivation_path(&derivation_path.to_string());
+    println!("depth: {:#?}", depth);
+
+    let bip32_extended_public_key = serialize_key(SerializeKeyArgs {
+        key: found_child.public_key_hex.clone(),
+        parent_public_key: Some(parent_keys.public_key_hex.clone()),
+        child_chain_code: found_child.chain_code_hex.clone(),
+        is_public: true,
+        is_testnet: IS_TESTNET,
+        depth: Some(depth),
+        child_index: derivation_child_index as u32,
+        is_hardened: found_child.is_hardened,
+    });
+    let bip32_extended_private_key = serialize_key(SerializeKeyArgs {
+        key: found_child.private_key_hex.clone(),
+        parent_public_key: Some(parent_keys.public_key_hex.clone()),
+        child_chain_code: found_child.chain_code_hex.clone(),
+        is_public: false,
+        is_testnet: IS_TESTNET,
+        depth: Some(depth),
+        child_index: derivation_child_index as u32,
+        is_hardened: found_child.is_hardened,
+    });
+    (bip32_extended_public_key, bip32_extended_private_key)
 }
