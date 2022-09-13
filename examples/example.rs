@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use bitcoin_hd_keys::{
     get_256_bits_of_entropy, get_bip32_extended_keys_from_derivation_path,
     get_bip32_root_key_from_seed, get_bip38_512_bit_private_key,
-    get_derived_addresses_for_derivation_path, get_master_keys_from_seed, get_mnemonic_words, Keys,
-    Network,
+    get_derived_addresses_for_derivation_path, get_master_keys_from_seed, get_mnemonic_words,
+    AddressType, Keys, Network,
 };
 
 const NETWORK: Network = Network::Testnet;
+const ADDRESS_TYPE: AddressType = AddressType::Bech32;
 
 fn main() {
     // 1) Use some cryptographically secure entropy generator to generate 128 bits of entropy.
@@ -30,9 +31,9 @@ fn main() {
 
     // HARDCODED FOR TESTING
     // let bip39_seed = "67f93560761e20617de26e0cb84f7234aaf373ed2e66295c3d7397e6d7ebe882ea396d5d293808b0defd7edd2babd4c091ad942e6a9351e6d075a29d4df872af".to_string();
-    // let bip39_seed = "c4f5d3f03269fe18101b4ba87810e07bdf63a67660c1467ff146836cd6772e092a9a10d6f6d65212085a0443b18d833721c7cb64bddef54c555ef2fdb48101a6".to_string();
+    let bip39_seed = "c4f5d3f03269fe18101b4ba87810e07bdf63a67660c1467ff146836cd6772e092a9a10d6f6d65212085a0443b18d833721c7cb64bddef54c555ef2fdb48101a6".to_string();
     let passphrase = "".to_string();
-    let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
+    // let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
     println!("BIP39 SEED: {}", bip39_seed);
     //
 
@@ -40,7 +41,10 @@ fn main() {
     let master_keys = get_master_keys_from_seed(&bip39_seed);
     println!("MASTER KEYS: {:#?}", &master_keys);
     println!("MASTER WIF: {}", &master_keys.get_wif(NETWORK));
-    println!("MASTER ADDRESS: {}", master_keys.get_address(NETWORK),);
+    println!(
+        "MASTER ADDRESS: {}",
+        master_keys.get_address(NETWORK, ADDRESS_TYPE),
+    );
 
     // let master_keys = Keys {
     //     private_key_hex: "10f87383075f7586e0c45db3ecdac1da80318a4396d0aff5e8783b44e8ee5b83"
@@ -114,7 +118,7 @@ fn main() {
             "{}/{}   {}     {}          {}",
             &derivation_path,
             key,
-            value.get_address(NETWORK),
+            value.get_address(NETWORK, ADDRESS_TYPE),
             public_key_hex,
             value.get_wif(NETWORK)
         )

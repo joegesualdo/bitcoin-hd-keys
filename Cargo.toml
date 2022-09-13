@@ -18,3 +18,4 @@ ring = "0.16.20"
 secp256k1 = { version = "0.24.0", features = ["rand"]}
 sha2 = "0.10.5"
 sha256 = "=1.0.3"
+bitcoin-bech32 = "=0.12.1"

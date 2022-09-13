@@ -32,6 +32,7 @@ use bip39::WORDS;
 use bitcoin::hashes::{ripemd160, Hash};
 use bitcoin::util::base58::check_encode_slice;
 use bitcoin::util::base58::from_check;
+use bitcoin_bech32::{u5, WitnessProgram};
 use hmac_sha512::HMAC;
 use num_bigint::BigUint;
 use rand::{thread_rng, RngCore};
@@ -59,8 +60,8 @@ impl NonMasterKeys {
     pub fn get_wif(&self, network: Network) -> String {
         get_wif_from_private_key(&self.private_key_hex, network, true)
     }
-    pub fn get_address(&self, network: Network) -> String {
-        get_address_from_pub_key(&self.public_key_hex, network)
+    pub fn get_address(&self, network: Network, address_type: AddressType) -> String {
+        get_address_from_pub_key(&self.public_key_hex, network, address_type)
     }
     pub fn serialize(
         &self,
@@ -87,8 +88,8 @@ impl MasterKeys {
     pub fn get_wif(&self, network: Network) -> String {
         get_wif_from_private_key(&self.private_key_hex, network, true)
     }
-    pub fn get_address(&self, network: Network) -> String {
-        get_address_from_pub_key(&self.public_key_hex, network)
+    pub fn get_address(&self, network: Network, address_type: AddressType) -> String {
+        get_address_from_pub_key(&self.public_key_hex, network, address_type)
     }
     pub fn serialize(&self, network: Network) -> SerializedExtendedKeys {
         serialize_master_key(self, network)
@@ -108,10 +109,10 @@ impl Keys {
             Keys::NonMaster(non_master_keys) => non_master_keys.get_wif(network),
         }
     }
-    pub fn get_address(&self, network: Network) -> String {
+    pub fn get_address(&self, network: Network, address_type: AddressType) -> String {
         match &self {
-            Keys::Master(master_keys) => master_keys.get_address(network),
-            Keys::NonMaster(non_master_keys) => non_master_keys.get_address(network),
+            Keys::Master(master_keys) => master_keys.get_address(network, address_type),
+            Keys::NonMaster(non_master_keys) => non_master_keys.get_address(network, address_type),
         }
     }
 }
@@ -233,6 +234,14 @@ fn split_string_with_spaces_for_substrings_with_length(s: &str, length: u64) -> 
 fn split_binary_string_into_framents_of_11_bits(binary_string: &str) -> Vec<String> {
     let entropy_plus_checksum_binary_with_spaces_seperating =
         split_string_with_spaces_for_substrings_with_length(&binary_string, 11);
+    let word_binary: Vec<&str> = entropy_plus_checksum_binary_with_spaces_seperating
+        .split(" ")
+        .collect();
+    word_binary.iter().map(|&s| s.to_string()).collect()
+}
+fn split_binary_string_into_framents_of_5_bits(binary_string: &str) -> Vec<String> {
+    let entropy_plus_checksum_binary_with_spaces_seperating =
+        split_string_with_spaces_for_substrings_with_length(&binary_string, 5);
     let word_binary: Vec<&str> = entropy_plus_checksum_binary_with_spaces_seperating
         .split(" ")
         .collect();
@@ -711,33 +720,88 @@ fn get_wif_from_private_key(
     let wif_private_key = check_encode_slice(&combined_version_and_private_key_hex_with_end_array);
     wif_private_key
 }
-fn get_address_from_pub_key_hash(public_key_hash: &String, network: Network) -> String {
-    // SEE ALL VERSION APPLICATION CODES HERE: https://en.bitcoin.it/wiki/List_of_address_prefixes
-    // TODO: ALL ALL TYPES OF ADDRESSES
-    let p2pkh_version_application_byte = "00";
-    let p2pkh_testnet_version_application_byte = "6f";
-    let p2sh_version_application_byte = "05";
 
-    let version_application_byte = match network {
-        Network::Mainnet => p2pkh_version_application_byte,
-        Network::Testnet => p2pkh_testnet_version_application_byte,
+pub enum AddressType {
+    P2PKH,
+    P2SH,
+    Bech32,
+}
+fn get_address_from_pub_key_hash(
+    public_key_hash: &String,
+    network: Network,
+    address_type: AddressType,
+) -> String {
+    match address_type {
+        AddressType::Bech32 => {
+            let bech32_address =
+                get_bech_32_address_from_pubkey_hash(&public_key_hash, network).clone();
+            bech32_address
+        } // println!("pub key: {}", pub_key);
+        _ => {
+            // SEE ALL VERSION APPLICATION CODES HERE: https://en.bitcoin.it/wiki/List_of_address_prefixes
+            // TODO: ALL ALL TYPES OF ADDRESSES
+            let p2pkh_version_application_byte = "00";
+            let p2pkh_testnet_version_application_byte = "6f";
+            let p2sh_version_application_byte = "05";
+            let p2sh_testnet_version_application_byte = "c4";
+
+            let version_application_byte = match address_type {
+                AddressType::P2PKH => match network {
+                    Network::Mainnet => p2pkh_version_application_byte,
+                    Network::Testnet => p2pkh_testnet_version_application_byte,
+                },
+                AddressType::P2SH => match network {
+                    Network::Mainnet => p2sh_version_application_byte,
+                    Network::Testnet => p2sh_testnet_version_application_byte,
+                },
+                AddressType::Bech32 => panic!("shouldn't have gotten here"),
+            };
+
+            // let hex_array = Vec::from_hex(public_key_hash).unwrap();
+            let hex_array = decode_hex(&public_key_hash).unwrap();
+            let version_array = decode_hex(version_application_byte).unwrap();
+            let a = concat_u8(&version_array, &hex_array);
+            // What does check encodings do?
+            //   - does a sha25 twice, then gets the first 4 bytes of that Result
+            //   - takes those first four bites and appends them to the original (version + hex array)
+            //   - Read "Encoding a bitcoin address": https://en.bitcoin.it/wiki/Base58Check_encoding
+            let address = check_encode_slice(&a);
+            address
+        }
+    }
+}
+
+fn get_bech_32_address_from_pubkey_hash(pub_key_hash: &String, network: Network) -> String {
+    // Helpful to check: https://slowli.github.io/bech32-buffer/
+    // Current version is 00
+    // Source: https://en.bitcoin.it/wiki/Bech32
+    let witness_version = 0;
+    let byte_array = decode_hex(&pub_key_hash).unwrap();
+    // TODO: Implement the conversion from public_key to bech32 myself
+    // We're using an external library
+    let network_for_bech32_library = match network {
+        Network::Mainnet => bitcoin_bech32::constants::Network::Bitcoin,
+        Network::Testnet => bitcoin_bech32::constants::Network::Testnet,
     };
+    let witness_program = WitnessProgram::new(
+        u5::try_from_u8(witness_version).unwrap(),
+        byte_array,
+        network_for_bech32_library,
+    )
+    .unwrap();
 
-    // let hex_array = Vec::from_hex(public_key_hash).unwrap();
-    let hex_array = decode_hex(&public_key_hash).unwrap();
-    let version_array = decode_hex(version_application_byte).unwrap();
-    let a = concat_u8(&version_array, &hex_array);
-    // What does check encodings do?
-    //   - does a sha25 twice, then gets the first 4 bytes of that Result
-    //   - takes those first four bites and appends them to the original (version + hex array)
-    //   - Read "Encoding a bitcoin address": https://en.bitcoin.it/wiki/Base58Check_encoding
-    let address = check_encode_slice(&a);
+    let address = witness_program.to_address();
     address
 }
 
-fn get_address_from_pub_key(pub_key: &String, network: Network) -> String {
-    let pub_key_hash = get_public_key_hash(pub_key);
-    let address = get_address_from_pub_key_hash(&pub_key_hash, network);
+fn get_address_from_pub_key(
+    pub_key: &String,
+    network: Network,
+    address_type: AddressType,
+) -> String {
+    let pub_key_hash = get_public_key_hash(&pub_key);
+
+    let address = get_address_from_pub_key_hash(&pub_key_hash, network, address_type);
     return address;
 }
 
