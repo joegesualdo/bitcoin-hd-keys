@@ -870,6 +870,7 @@ pub fn convert_wif_to_private_key(wif: &String) -> String {
     // 1. decode the base58check
 
     let is_compressed_wif = is_wif_compressed(wif);
+    let wif_base58check_decoded_result = from_check(&wif);
     let wif_base58check_decoded = from_check(&wif).unwrap();
     // 2. drop the fist byte
     // TODO: It's more complicated than this: "Drop the first byte (it should be 0x80, however
