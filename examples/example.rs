@@ -50,15 +50,13 @@ fn main() {
     // ==========MASTER KEYS===============================
     let master_keys = get_master_keys_from_seed(bip39_seed);
     let master_xprv = serialize_key(SerializeKeyArgs {
-        key: master_keys.private_key_hex.clone(),
+        child_keys: master_keys.clone(),
         parent_public_key: None,
-        child_chain_code: master_keys.chain_code_hex.clone(),
         is_public: false,
         is_testnet: IS_TESTNET,
         depth: Some(0),
         child_index: 0,
         // Note: always false for master key
-        is_hardened: false,
     });
     println!("MASTER KEYS: {:#?}", master_keys);
     println!("MASTER WIF: {}", master_keys.get_wif());
@@ -66,7 +64,7 @@ fn main() {
     println!("MASTER ADDRESS: {}", master_keys.get_address(),);
     // ======================================================
 
-    let derivation_path = "m/0/0/1/4".to_string();
+    let derivation_path = "m/0/0/1/4'".to_string();
 
     let (bip32_extended_public_key, bip32_extended_private_key) =
         get_extended_keys_from_derivation_path(&derivation_path, &master_keys);
@@ -109,7 +107,7 @@ fn main() {
     //
     //
 
-    let should_be_hardened = false;
+    let should_be_hardened = true;
     let found_children = get_children_keys_from_derivation_path(
         &derivation_path,
         master_keys,

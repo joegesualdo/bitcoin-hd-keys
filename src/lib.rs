@@ -197,26 +197,22 @@ pub fn convert_binary_to_int(binary_string: &str) -> isize {
 }
 
 pub struct SerializeKeyArgs {
-    pub key: String,
+    pub child_keys: Keys,
     pub parent_public_key: Option<String>,
-    pub child_chain_code: String,
     pub is_public: bool,
     pub is_testnet: bool,
     pub depth: Option<u8>,
     pub child_index: u32,
-    pub is_hardened: bool,
 }
 
 pub fn serialize_key(args: SerializeKeyArgs) -> String {
     let SerializeKeyArgs {
-        key,
+        child_keys,
         parent_public_key,
-        child_chain_code,
         is_public,
         is_testnet,
         depth,
         child_index,
-        is_hardened,
     } = args;
     fn create_fingerprint(parent_public_key_hex: String) -> String {
         let hex_byte_array = decode_hex(&parent_public_key_hex).unwrap();
@@ -279,9 +275,9 @@ pub fn serialize_key(args: SerializeKeyArgs) -> String {
         }
     };
     let key = if is_public {
-        format!("{}", key)
+        format!("{}", child_keys.public_key_hex)
     } else {
-        format!("{}{}", "00", key)
+        format!("{}{}", "00", child_keys.private_key_hex)
     };
 
     let depth = convert_decimal_to_8_byte_hex_with(depth.unwrap_or(0));
@@ -292,13 +288,13 @@ pub fn serialize_key(args: SerializeKeyArgs) -> String {
     // for child
     // let parent_fingerprint = create_fingerprint(parent_public_key.to_string());
     // TODO: How do we do children at other indexes other than 0. Like 1.
-    let child_index_with_hardened_factored_in = if is_hardened {
+    let child_index_with_hardened_factored_in = if child_keys.is_hardened {
         child_index + 2147483648 // # child index number (must between 2**31 and 2**32-1)
     } else {
         child_index
     };
     let child_number = convert_decimal_to_32_byte_hex_with(child_index_with_hardened_factored_in);
-    let chain_code = child_chain_code;
+    let chain_code = child_keys.chain_code_hex;
     // let key = format!("{}{}", "00", private_key);
     let serialized = format!(
         "{}{}{}{}{}{}",
@@ -682,24 +678,20 @@ pub fn print_child_keys(parent_keys: Keys, children_count: i32) {
         let parent_public_key = parent_keys.public_key_hex.clone();
 
         let xpub = serialize_key(SerializeKeyArgs {
-            key: child_keys.public_key_hex,
+            child_keys: child_keys.clone(),
             parent_public_key: Some(parent_public_key.clone()),
-            child_chain_code: child_keys.chain_code_hex.clone(),
             is_public: true,
             is_testnet: IS_TESTNET,
             depth: Some(1),
             child_index: child_index as u32,
-            is_hardened: child_keys.is_hardened,
         });
         let xprv = serialize_key(SerializeKeyArgs {
-            key: child_keys.private_key_hex,
+            child_keys: child_keys.clone(),
             parent_public_key: Some(parent_public_key),
-            child_chain_code: child_keys.chain_code_hex,
             is_public: false,
             is_testnet: IS_TESTNET,
             depth: Some(1),
             child_index: child_index as u32,
-            is_hardened: child_keys.is_hardened,
         });
         println!("{} xpub: {}", child_index, xpub);
         println!("{} xprv: {}", child_index, xprv);
@@ -726,24 +718,20 @@ pub fn print_child_keys(parent_keys: Keys, children_count: i32) {
         let parent_public_key = parent_keys.public_key_hex.clone();
 
         let xpub = serialize_key(SerializeKeyArgs {
-            key: child_keys_hardened.public_key_hex,
+            child_keys: child_keys_hardened.clone(),
             parent_public_key: Some(parent_public_key.clone()),
-            child_chain_code: child_keys_hardened.chain_code_hex.clone(),
             is_public: true,
             is_testnet: IS_TESTNET,
             depth: Some(1),
             child_index: child_index as u32,
-            is_hardened: child_keys_hardened.is_hardened,
         });
         let xprv = serialize_key(SerializeKeyArgs {
-            key: child_keys_hardened.private_key_hex,
+            child_keys: child_keys_hardened.clone(),
             parent_public_key: Some(parent_public_key),
-            child_chain_code: child_keys_hardened.chain_code_hex,
             is_public: false,
             is_testnet: IS_TESTNET,
             depth: Some(1),
             child_index: child_index as u32,
-            is_hardened: child_keys_hardened.is_hardened,
         });
         println!("{}' xpub: {}", child_index, xpub);
         println!("{}' xprv: {}", child_index, xprv);
@@ -979,24 +967,20 @@ pub fn get_extended_keys_from_derivation_path(
     println!("depth: {:#?}", depth);
 
     let bip32_extended_public_key = serialize_key(SerializeKeyArgs {
-        key: found_child.public_key_hex.clone(),
+        child_keys: found_child.clone(),
         parent_public_key: Some(parent_keys.public_key_hex.clone()),
-        child_chain_code: found_child.chain_code_hex.clone(),
         is_public: true,
         is_testnet: IS_TESTNET,
         depth: Some(depth),
         child_index: derivation_child_index as u32,
-        is_hardened: found_child.is_hardened,
     });
     let bip32_extended_private_key = serialize_key(SerializeKeyArgs {
-        key: found_child.private_key_hex.clone(),
+        child_keys: found_child.clone(),
         parent_public_key: Some(parent_keys.public_key_hex.clone()),
-        child_chain_code: found_child.chain_code_hex.clone(),
         is_public: false,
         is_testnet: IS_TESTNET,
         depth: Some(depth),
         child_index: derivation_child_index as u32,
-        is_hardened: found_child.is_hardened,
     });
     (bip32_extended_public_key, bip32_extended_private_key)
 }
