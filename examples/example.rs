@@ -5,36 +5,40 @@ use bitcoin_hd_keys::{
     get_256_bits_of_entropy, get_bip32_extended_keys_from_derivation_path,
     get_bip32_root_key_from_master_keys, get_bip32_root_key_from_seed,
     get_bip38_512_bit_private_key, get_derived_addresses_for_derivation_path,
-    get_master_keys_from_seed, get_mnemonic_words, AddressType, DecodedExtendedKeySerialized, Keys,
-    MasterKeys, Network,
+    get_master_keys_from_bip32_root_key, get_master_keys_from_seed,
+    get_master_keys_from_serialized_extended_private_master_key, get_mnemonic_sentence,
+    get_mnemonic_words, AddressType, DecodedExtendedKeySerialized, Keys, MasterKeys, Network,
 };
 
-const NETWORK: Network = Network::Testnet;
-const ADDRESS_TYPE: AddressType = AddressType::Bech32;
+const NETWORK: Network = Network::Mainnet;
+const ADDRESS_TYPE: AddressType = AddressType::P2PKH;
 
 fn main() {
+    let should_compress_wif = true;
     // 1) Use some cryptographically secure entropy generator to generate 128 bits of entropy.
     // Create array of length 32 and fill with a random u8;
     let entropy_array = get_128_bits_of_entropy();
 
-    // let mnemonic_words = get_mnemonic_words(entropy_array.to_vec());
-    let mnemonic_words = vec![
-        "couch".to_string(),
-        "wink".to_string(),
-        "dizzy".to_string(),
-        "net".to_string(),
-        "prison".to_string(),
-        "smile".to_string(),
-        "total".to_string(),
-        "zone".to_string(),
-        "orphan".to_string(),
-        "snake".to_string(),
-        "utility".to_string(),
-        "nerve".to_string(),
-    ];
+    let mnemonic_words = get_mnemonic_words(entropy_array.to_vec());
+    // let mnemonic_words = vec![
+    //     "couch".to_string(),
+    //     "wink".to_string(),
+    //     "dizzy".to_string(),
+    //     "net".to_string(),
+    //     "prison".to_string(),
+    //     "smile".to_string(),
+    //     "total".to_string(),
+    //     "zone".to_string(),
+    //     "orphan".to_string(),
+    //     "snake".to_string(),
+    //     "utility".to_string(),
+    //     "nerve".to_string(),
+    // ];
+
     println!("MNEMONIC WORDS: {:?}", mnemonic_words);
 
-    let mnemonic_sentence = mnemonic_words.join(" ");
+    let mnemonic_sentence = get_mnemonic_sentence(&mnemonic_words);
+
     println!("MNEMONIC SENTENCE: {}", mnemonic_sentence);
 
     // HARDCODED FOR TESTING
@@ -44,35 +48,29 @@ fn main() {
     let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
     println!("BIP39 SEED: {}", bip39_seed);
     //
+    let bip32_root_key = get_bip32_root_key_from_seed(&bip39_seed, NETWORK);
+    println!("BIP39 Root Key: {}", bip32_root_key);
 
     // ==========MASTER KEYS===============================
+    // TWO WAYS TO GET MASTER KEYS:
+    // 1) from bip39 seed
     let master_keys = get_master_keys_from_seed(&bip39_seed);
+    // 2) from xpriv (root key)
+    let master_keys = get_master_keys_from_serialized_extended_private_master_key(&bip32_root_key);
+    // or use the wrapper
+    let master_keys = get_master_keys_from_bip32_root_key(&bip32_root_key);
+    //
     println!("MASTER KEYS: {:#?}", &master_keys);
-    println!("MASTER WIF: {}", &master_keys.get_wif(NETWORK));
+    println!(
+        "MASTER WIF: {}",
+        &master_keys.get_wif(NETWORK, should_compress_wif)
+    );
     println!(
         "MASTER ADDRESS: {}",
         master_keys.get_address(NETWORK, ADDRESS_TYPE),
     );
 
-    let bip32_root_key = get_bip32_root_key_from_seed(&bip39_seed, NETWORK);
-    println!("BIP39 Root Key: {}", bip32_root_key);
-    // DELETE -------------------------------------------------
-    // TODO: GET MASTER KEYS FROM XPRIV (BIP32 ROOT KEY)
-    let xpriv = &"tprv8ZgxMBicQKsPeV486TYHjJ4phGwm2P6GPDUsrkWJVXKLZR4UXpnPuXThDvpue9ceaC43NmyvpdGN4pGPGaqf8PsF13WaY8icjHELvhUeia6".to_string();
-
-    let decoded_serialized_extended_key = decode_serialized_extended_key(xpriv);
-    let decoded_xpriv_keys = match decoded_serialized_extended_key {
-        DecodedExtendedKeySerialized::PrivateKey(decoded_extended_serialized_private_key) => {
-            decoded_extended_serialized_private_key
-        }
-        DecodedExtendedKeySerialized::PublicKey(_) => panic!("shouldn happen"),
-    };
-    let master_keys = MasterKeys {
-        private_key_hex: decoded_xpriv_keys.private_key_hex,
-        public_key_hex: decoded_xpriv_keys.public_key_hex,
-        chain_code_hex: decoded_xpriv_keys.chain_code_hex,
-    };
-    println!("WIF: {}", master_keys.get_wif(NETWORK));
+    println!("WIF: {}", master_keys.get_wif(NETWORK, should_compress_wif));
     let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, NETWORK);
     println!("BIP39 Root Key: {}", bip32_root_key);
     // -------------------------------------------------
@@ -86,6 +84,11 @@ fn main() {
         &Keys::Master(master_keys.clone()),
         NETWORK,
     );
+    let xpriv = &bip32_extended_keys.xpriv;
+    let xpub = &bip32_extended_keys.xpub;
+
+    let decoded_serialized_extended_key = decode_serialized_extended_key(&xpriv);
+    println!("{:#?}", &decoded_serialized_extended_key);
     println!(
         "bip32_extended_public_key!: {:#?}",
         bip32_extended_keys.xpub
@@ -94,23 +97,58 @@ fn main() {
         "bip32_extended_private_key: {:#?}",
         bip32_extended_keys.xpriv
     );
+    // let found_child = get_child_key_from_derivation_path("m/0".to_string(), master_keys.clone());
+
+    // let found_child_xpub = serialize_key(SerializeKeyArgs {
+    //     key: found_child.public_key_hex.clone(),
+    //     parent_public_key: Some(master_keys.public_key_hex.clone()),
+    //     child_chain_code: found_child.chain_code_hex.clone(),
+    //     is_public: true,
+    //     is_testnet: IS_TESTNET,
+    //     depth: Some(0),
+    //     child_index: 0 as u32,
+    // });
+    // let found_child_xprv = serialize_key(SerializeKeyArgs {
+    //     key: found_child.private_key_hex.clone(),
+    //     parent_public_key: Some(master_keys.public_key_hex.clone()),
+    //     child_chain_code: found_child.chain_code_hex.clone(),
+    //     is_public: false,
+    //     is_testnet: IS_TESTNET,
+    //     depth: Some(0),
+    //     child_index: 0 as u32,
+    // });
+    // println!("found child!: {:#?}", found_child);
+    // println!("found child xpub!: {:#?}", found_child_xpub);
+    // println!("found child xprv!: {:#?}", found_child_xprv);
+    // println!("found child address!: {:#?}", found_child.get_address());
+    // println!("found child wif!: {:#?}", found_child.get_wif());
+    //
+    //
+    //
+    //
 
     let should_harden = true;
-    let found_children =
-        get_derived_addresses_for_derivation_path(&derivation_path, master_keys, 5, should_harden);
+    let children_count = 5;
+    let found_children = get_derived_addresses_for_derivation_path(
+        &derivation_path,
+        master_keys,
+        children_count,
+        should_harden,
+    );
 
     for (key, value) in found_children {
+        let should_compress = true;
         let public_key_hex = match &value {
             Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
             Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
         };
         println!(
-            "{}/{}   {}     {}          {}",
+            "{}/{} {}     {}          {}",
             &derivation_path,
             key,
             value.get_address(NETWORK, ADDRESS_TYPE),
             public_key_hex,
-            value.get_wif(NETWORK)
+            value.get_wif(NETWORK, should_compress)
         )
     }
 }

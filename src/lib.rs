@@ -58,8 +58,8 @@ pub struct NonMasterKeys {
     pub is_hardened: bool,
 }
 impl NonMasterKeys {
-    pub fn get_wif(&self, network: Network) -> String {
-        get_wif_from_private_key(&self.private_key_hex, network, true)
+    pub fn get_wif(&self, network: Network, should_compress: bool) -> String {
+        get_wif_from_private_key(&self.private_key_hex, network, should_compress)
     }
     pub fn get_address(&self, network: Network, address_type: AddressType) -> String {
         get_address_from_pub_key(&self.public_key_hex, network, address_type)
@@ -86,8 +86,8 @@ pub struct MasterKeys {
     pub chain_code_hex: String,
 }
 impl MasterKeys {
-    pub fn get_wif(&self, network: Network) -> String {
-        get_wif_from_private_key(&self.private_key_hex, network, true)
+    pub fn get_wif(&self, network: Network, should_compress: bool) -> String {
+        get_wif_from_private_key(&self.private_key_hex, network, should_compress)
     }
     pub fn get_address(&self, network: Network, address_type: AddressType) -> String {
         get_address_from_pub_key(&self.public_key_hex, network, address_type)
@@ -104,10 +104,10 @@ pub enum Keys {
 }
 
 impl Keys {
-    pub fn get_wif(&self, network: Network) -> String {
+    pub fn get_wif(&self, network: Network, should_compress: bool) -> String {
         match &self {
-            Keys::Master(master_keys) => master_keys.get_wif(network),
-            Keys::NonMaster(non_master_keys) => non_master_keys.get_wif(network),
+            Keys::Master(master_keys) => master_keys.get_wif(network, should_compress),
+            Keys::NonMaster(non_master_keys) => non_master_keys.get_wif(network, should_compress),
         }
     }
     pub fn get_address(&self, network: Network, address_type: AddressType) -> String {
@@ -123,19 +123,47 @@ enum DerivationChild {
     Hardened(u32),
 }
 
+#[derive(Debug, Clone)]
+pub struct DecodedExtendedSerializedPrivateKey {
+    pub version_hex: String,
+    pub depth: u8,
+    pub parent_fingerprint: String,
+    pub child_index: u32,
+    pub network: Network,
+    pub depth_fingerprint_child_index_hex: String,
+    pub chain_code_hex: String,
+    pub private_key_hex: String,
+    pub wif_compressed: String,
+    pub wif_uncompressed: String,
+    pub public_key_hex_uncompressed: String,
+    pub public_key_hex_compressed: String,
+}
+#[derive(Debug, Clone)]
+pub struct DecodedExtendedSerializedPublicKey {
+    pub version_hex: String,
+    pub depth: u8,
+    pub parent_fingerprint: String,
+    pub child_index: u32,
+    pub network: Network,
+    pub depth_fingerprint_child_index_hex: String,
+    pub chain_code_hex: String,
+    pub public_key_hex_uncompressed: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum DecodedExtendedKeySerialized {
+    PrivateKey(DecodedExtendedSerializedPrivateKey),
+    PublicKey(DecodedExtendedSerializedPublicKey),
+}
+
 fn convert_decimal_to_32_byte_hex_with(num: u32) -> String {
     format!("{:08x}", num)
 }
 fn convert_decimal_to_8_byte_hex_with(num: u8) -> String {
     format!("{:02x}", num)
 }
-fn convert_hex_to_decimal(hex: String) -> BigUint {
-    let hex = "f9cf43a313496a007fe4fc1c4fb996238b4ace646d7ada0c1ffbf37653b991e9";
-    // let hex = "7e48c5ab7f43e4d9c17bd9712627dcc76d4df2099af7c8e5";
-    // let a: BigInt = 13083591726159223555551223938753535127604258367126228576140903598401097365714201702017529413442114868104244686915389844693808367317716621188940830798420643;
-    let z = hex.parse::<BigUint>().unwrap();
-
-    // let z = BigUint::from_str(&hex, 16);
+fn convert_hex_to_decimal(hex: &str) -> Result<i64, ParseIntError> {
+    let z = i64::from_str_radix(hex, 16);
     z
 }
 
@@ -688,92 +716,6 @@ fn get_child_keys(
     children
 }
 
-#[derive(Debug)]
-pub struct DecodedExtendedSerializedPrivateKey {
-    pub version_hex: String,
-    pub network: Network,
-    pub depth_fingerprint_child_index_hex: String,
-    pub chain_code_hex: String,
-    pub private_key_hex: String,
-    pub public_key_hex: String,
-}
-#[derive(Debug)]
-pub struct DecodedExtendedSerializedPublicKey {
-    pub version_hex: String,
-    pub network: Network,
-    pub depth_fingerprint_child_index_hex: String,
-    pub chain_code_hex: String,
-    pub public_key_hex: String,
-}
-
-#[derive(Debug)]
-pub enum DecodedExtendedKeySerialized {
-    PrivateKey(DecodedExtendedSerializedPrivateKey),
-    PublicKey(DecodedExtendedSerializedPublicKey),
-}
-
-pub fn decode_serialized_extended_key(
-    extended_key_serialized: &str,
-) -> DecodedExtendedKeySerialized {
-    let decoded_result = from_check(extended_key_serialized).unwrap();
-    let index_of_last_byte_of_version = 3;
-    let version_bytes = decoded_result
-        .get(0..=index_of_last_byte_of_version)
-        .unwrap();
-    let version_hex = encode_hex(&version_bytes);
-    let (network, is_public) = match version_hex.as_str() {
-        "0488b21e" => (Network::Mainnet, true),
-        "043587cf" => (Network::Testnet, true),
-        "0488ade4" => (Network::Mainnet, false),
-        "04358394" => (Network::Testnet, false),
-        _ => panic!("Version  not recognized: {}", version_hex),
-    };
-
-    // Check: https://coinb.in/#verify
-    // Source:https://en.bitcoin.it/wiki/Wallet_import_format
-    // 1. decode the base58check
-    // private key is 64 characters long, and each byte is 2 characters (4 bytes each).
-    let index_where_private_key_starts = decoded_result.len() - (64 / 2);
-    let index_where_chain_code_starts = index_where_private_key_starts - (64 / 2) - 1;
-    let key_bytes = decoded_result
-        .get(index_where_private_key_starts..)
-        .unwrap();
-    // There is a byte between chain code and private key, that's why we subtract 1 here from the
-    // index where the private key starts
-    let chain_code_bytes = decoded_result
-        .get(
-            index_where_chain_code_starts
-                ..(index_where_private_key_starts - (if is_public { 0 } else { 1 })),
-        )
-        .unwrap();
-    let depth_fingerprint_child_index_bytes = decoded_result
-        .get((index_of_last_byte_of_version + 1)..index_where_chain_code_starts)
-        .unwrap();
-    let key_hex = encode_hex(&key_bytes);
-    let chain_code_hex = encode_hex(&chain_code_bytes);
-    let depth_fingerprint_child_index_hex = encode_hex(&depth_fingerprint_child_index_bytes);
-
-    let should_compress = true;
-    if is_public {
-        DecodedExtendedKeySerialized::PublicKey(DecodedExtendedSerializedPublicKey {
-            version_hex,
-            network,
-            depth_fingerprint_child_index_hex,
-            chain_code_hex,
-            public_key_hex: key_hex,
-        })
-    } else {
-        DecodedExtendedKeySerialized::PrivateKey(DecodedExtendedSerializedPrivateKey {
-            version_hex,
-            network,
-            depth_fingerprint_child_index_hex,
-            chain_code_hex,
-            private_key_hex: key_hex.clone(),
-            public_key_hex: get_public_key_from_private_key(&key_hex, should_compress),
-        })
-    }
-}
-
 fn get_wif_from_private_key(
     private_key: &String,
     network: Network,
@@ -1061,6 +1003,9 @@ pub fn get_mnemonic_words(entropy: Vec<u8>) -> Vec<String> {
         .collect();
     words
 }
+pub fn get_mnemonic_sentence(mnemonic_words: &Vec<String>) -> String {
+    mnemonic_words.join(" ")
+}
 
 pub fn get_bip38_512_bit_private_key(words: Vec<String>, passphrase: Option<String>) -> String {
     let mnemonic_sentence = words.join(" ");
@@ -1221,4 +1166,113 @@ pub fn convert_wif_to_private_key(wif: &String) -> String {
     let wif_base58check_decoded_without_first_byte_and_adjusted_for_compression_hex =
         encode_hex(wif_base58check_decoded_without_first_byte_and_adjusted_for_compression);
     wif_base58check_decoded_without_first_byte_and_adjusted_for_compression_hex
+}
+pub fn decode_serialized_extended_key(
+    extended_key_serialized: &str,
+) -> DecodedExtendedKeySerialized {
+    // Source (to check work): http://bip32.org/
+    let decoded_result = from_check(extended_key_serialized).unwrap();
+    let index_of_last_byte_of_version = 3;
+    let version_bytes = decoded_result
+        .get(0..=index_of_last_byte_of_version)
+        .unwrap();
+    let version_hex = encode_hex(version_bytes);
+    let (network, is_public) = match version_hex.as_str() {
+        "0488b21e" => (Network::Mainnet, true),
+        "043587cf" => (Network::Testnet, true),
+        "0488ade4" => (Network::Mainnet, false),
+        "04358394" => (Network::Testnet, false),
+        _ => panic!("Version  not recognized: {}", version_hex),
+    };
+
+    // Check: https://coinb.in/#verify
+    // Source:https://en.bitcoin.it/wiki/Wallet_import_format
+    // 1. decode the base58check
+    // private key is 64 characters long, and each byte is 2 characters (4 bytes each).
+    let index_where_private_key_starts = decoded_result.len() - (64 / 2);
+    let index_where_chain_code_starts = index_where_private_key_starts - (64 / 2) - 1;
+    let key_bytes = decoded_result
+        .get(index_where_private_key_starts..)
+        .unwrap();
+    // There is a byte between chain code and private key, that's why we subtract 1 here from the
+    // index where the private key starts
+    let chain_code_bytes = decoded_result
+        .get(
+            index_where_chain_code_starts
+                ..(index_where_private_key_starts - (if is_public { 0 } else { 1 })),
+        )
+        .unwrap();
+    let key_hex = encode_hex(&key_bytes);
+    let chain_code_hex = encode_hex(&chain_code_bytes);
+
+    let depth_fingerprint_child_index_bytes = decoded_result
+        .get((index_of_last_byte_of_version + 1)..index_where_chain_code_starts)
+        .unwrap();
+    let depth_fingerprint_child_index_hex = encode_hex(&depth_fingerprint_child_index_bytes);
+    let depth_byte = depth_fingerprint_child_index_bytes.get(0).unwrap().clone();
+    let depth_hex = encode_hex(&[depth_byte]);
+    let depth_decimal = convert_hex_to_decimal(&depth_hex).unwrap() as u8;
+    let depth = depth_fingerprint_child_index_bytes.get(0..=1).unwrap();
+    let depth_hex = encode_hex(&depth);
+
+    let parent_fingerprint_bytes = depth_fingerprint_child_index_bytes.get(1..=4).unwrap();
+    let parent_fingerprint_hex = encode_hex(parent_fingerprint_bytes);
+
+    let child_index_bytes = depth_fingerprint_child_index_bytes.get(5..).unwrap();
+    let child_index_hex = encode_hex(&child_index_bytes);
+    let child_index_decimal = convert_hex_to_decimal(&child_index_hex).unwrap() as u32;
+    if is_public {
+        DecodedExtendedKeySerialized::PublicKey(DecodedExtendedSerializedPublicKey {
+            version_hex,
+            network,
+            depth_fingerprint_child_index_hex,
+            depth: depth_decimal,
+            parent_fingerprint: parent_fingerprint_hex,
+            child_index: child_index_decimal,
+            chain_code_hex,
+            public_key_hex_uncompressed: key_hex,
+        })
+    } else {
+        DecodedExtendedKeySerialized::PrivateKey(DecodedExtendedSerializedPrivateKey {
+            version_hex,
+            network,
+            depth_fingerprint_child_index_hex,
+            depth: depth_decimal,
+            parent_fingerprint: parent_fingerprint_hex,
+            child_index: child_index_decimal,
+            chain_code_hex,
+            private_key_hex: key_hex.clone(),
+            wif_compressed: get_wif_from_private_key(&key_hex, network, true),
+            wif_uncompressed: get_wif_from_private_key(&key_hex, network, false),
+            public_key_hex_uncompressed: get_public_key_from_private_key(&key_hex, false),
+            public_key_hex_compressed: get_public_key_from_private_key(&key_hex, true),
+        })
+    }
+}
+pub fn get_master_keys_from_serialized_extended_private_master_key(
+    serialized_extended_private_key: &String,
+) -> MasterKeys {
+    let decoded_serialized_extended_key =
+        decode_serialized_extended_key(serialized_extended_private_key);
+    let decoded_xpriv_keys = match decoded_serialized_extended_key.clone() {
+        DecodedExtendedKeySerialized::PrivateKey(decoded_extended_serialized_private_key) => {
+            decoded_extended_serialized_private_key
+        }
+        DecodedExtendedKeySerialized::PublicKey(_) => panic!("shouldn happen"),
+    };
+    println!("{:#?}", decoded_xpriv_keys);
+    if decoded_xpriv_keys.depth == 0 && decoded_xpriv_keys.child_index == 0 {
+        let master_keys = MasterKeys {
+            private_key_hex: decoded_xpriv_keys.private_key_hex,
+            public_key_hex: decoded_xpriv_keys.public_key_hex_uncompressed,
+            chain_code_hex: decoded_xpriv_keys.chain_code_hex,
+        };
+        master_keys
+    } else {
+        panic!("must pass a master extended key here, not a child");
+    }
+}
+// Just a wapper for more specific naming
+pub fn get_master_keys_from_bip32_root_key(bip32_root_key: &String) -> MasterKeys {
+    get_master_keys_from_serialized_extended_private_master_key(bip32_root_key)
 }
