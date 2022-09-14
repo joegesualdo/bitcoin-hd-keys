@@ -688,6 +688,92 @@ fn get_child_keys(
     children
 }
 
+#[derive(Debug)]
+pub struct DecodedExtendedSerializedPrivateKey {
+    pub version_hex: String,
+    pub network: Network,
+    pub depth_fingerprint_child_index_hex: String,
+    pub chain_code_hex: String,
+    pub private_key_hex: String,
+    pub public_key_hex: String,
+}
+#[derive(Debug)]
+pub struct DecodedExtendedSerializedPublicKey {
+    pub version_hex: String,
+    pub network: Network,
+    pub depth_fingerprint_child_index_hex: String,
+    pub chain_code_hex: String,
+    pub public_key_hex: String,
+}
+
+#[derive(Debug)]
+pub enum DecodedExtendedKeySerialized {
+    PrivateKey(DecodedExtendedSerializedPrivateKey),
+    PublicKey(DecodedExtendedSerializedPublicKey),
+}
+
+pub fn decode_serialized_extended_key(
+    extended_key_serialized: &str,
+) -> DecodedExtendedKeySerialized {
+    let decoded_result = from_check(extended_key_serialized).unwrap();
+    let index_of_last_byte_of_version = 3;
+    let version_bytes = decoded_result
+        .get(0..=index_of_last_byte_of_version)
+        .unwrap();
+    let version_hex = encode_hex(&version_bytes);
+    let (network, is_public) = match version_hex.as_str() {
+        "0488b21e" => (Network::Mainnet, true),
+        "043587cf" => (Network::Testnet, true),
+        "0488ade4" => (Network::Mainnet, false),
+        "04358394" => (Network::Testnet, false),
+        _ => panic!("Version  not recognized: {}", version_hex),
+    };
+
+    // Check: https://coinb.in/#verify
+    // Source:https://en.bitcoin.it/wiki/Wallet_import_format
+    // 1. decode the base58check
+    // private key is 64 characters long, and each byte is 2 characters (4 bytes each).
+    let index_where_private_key_starts = decoded_result.len() - (64 / 2);
+    let index_where_chain_code_starts = index_where_private_key_starts - (64 / 2) - 1;
+    let key_bytes = decoded_result
+        .get(index_where_private_key_starts..)
+        .unwrap();
+    // There is a byte between chain code and private key, that's why we subtract 1 here from the
+    // index where the private key starts
+    let chain_code_bytes = decoded_result
+        .get(
+            index_where_chain_code_starts
+                ..(index_where_private_key_starts - (if is_public { 0 } else { 1 })),
+        )
+        .unwrap();
+    let depth_fingerprint_child_index_bytes = decoded_result
+        .get((index_of_last_byte_of_version + 1)..index_where_chain_code_starts)
+        .unwrap();
+    let key_hex = encode_hex(&key_bytes);
+    let chain_code_hex = encode_hex(&chain_code_bytes);
+    let depth_fingerprint_child_index_hex = encode_hex(&depth_fingerprint_child_index_bytes);
+
+    let should_compress = true;
+    if is_public {
+        DecodedExtendedKeySerialized::PublicKey(DecodedExtendedSerializedPublicKey {
+            version_hex,
+            network,
+            depth_fingerprint_child_index_hex,
+            chain_code_hex,
+            public_key_hex: key_hex,
+        })
+    } else {
+        DecodedExtendedKeySerialized::PrivateKey(DecodedExtendedSerializedPrivateKey {
+            version_hex,
+            network,
+            depth_fingerprint_child_index_hex,
+            chain_code_hex,
+            private_key_hex: key_hex.clone(),
+            public_key_hex: get_public_key_from_private_key(&key_hex, should_compress),
+        })
+    }
+}
+
 fn get_wif_from_private_key(
     private_key: &String,
     network: Network,

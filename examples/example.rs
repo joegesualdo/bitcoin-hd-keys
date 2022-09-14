@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
 use bitcoin_hd_keys::{
-    convert_wif_to_private_key, get_128_bits_of_entropy, get_256_bits_of_entropy,
-    get_bip32_extended_keys_from_derivation_path, get_bip32_root_key_from_master_keys,
-    get_bip32_root_key_from_seed, get_bip38_512_bit_private_key,
-    get_derived_addresses_for_derivation_path, get_master_keys_from_seed, get_mnemonic_words,
-    AddressType, Keys, MasterKeys, Network,
+    convert_wif_to_private_key, decode_serialized_extended_key, get_128_bits_of_entropy,
+    get_256_bits_of_entropy, get_bip32_extended_keys_from_derivation_path,
+    get_bip32_root_key_from_master_keys, get_bip32_root_key_from_seed,
+    get_bip38_512_bit_private_key, get_derived_addresses_for_derivation_path,
+    get_master_keys_from_seed, get_mnemonic_words, AddressType, DecodedExtendedKeySerialized, Keys,
+    MasterKeys, Network,
 };
 
 const NETWORK: Network = Network::Testnet;
-const ADDRESS_TYPE: AddressType = AddressType::P2SH;
+const ADDRESS_TYPE: AddressType = AddressType::Bech32;
 
 fn main() {
     // 1) Use some cryptographically secure entropy generator to generate 128 bits of entropy.
@@ -57,15 +58,21 @@ fn main() {
     println!("BIP39 Root Key: {}", bip32_root_key);
     // DELETE -------------------------------------------------
     // TODO: GET MASTER KEYS FROM XPRIV (BIP32 ROOT KEY)
-    let master_keys = MasterKeys {
-        private_key_hex: convert_wif_to_private_key(
-            &"cPjsEWRVjtUDK42ZePL1t2ZWmhS4FtL4G8C4epwVRiowUmxZ9itH".to_string(),
-        ),
-        public_key_hex: "0294683e00fa1e00b978260ac9bb3e9ece9b3dc8019d4162e75b6e0bb0dd30924a"
-            .to_string(),
-        chain_code_hex: "a1db5ad297c2802d2cdde23e49b617517343adc895678863e4912bd6226b9636"
-            .to_string(),
+    let xpriv = &"tprv8ZgxMBicQKsPeV486TYHjJ4phGwm2P6GPDUsrkWJVXKLZR4UXpnPuXThDvpue9ceaC43NmyvpdGN4pGPGaqf8PsF13WaY8icjHELvhUeia6".to_string();
+
+    let decoded_serialized_extended_key = decode_serialized_extended_key(xpriv);
+    let decoded_xpriv_keys = match decoded_serialized_extended_key {
+        DecodedExtendedKeySerialized::PrivateKey(decoded_extended_serialized_private_key) => {
+            decoded_extended_serialized_private_key
+        }
+        DecodedExtendedKeySerialized::PublicKey(_) => panic!("shouldn happen"),
     };
+    let master_keys = MasterKeys {
+        private_key_hex: decoded_xpriv_keys.private_key_hex,
+        public_key_hex: decoded_xpriv_keys.public_key_hex,
+        chain_code_hex: decoded_xpriv_keys.chain_code_hex,
+    };
+    println!("WIF: {}", master_keys.get_wif(NETWORK));
     let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, NETWORK);
     println!("BIP39 Root Key: {}", bip32_root_key);
     // -------------------------------------------------
@@ -106,6 +113,4 @@ fn main() {
             value.get_wif(NETWORK)
         )
     }
-    //TODO ITEM: Generate a bech32 address from a private key/wif
-    //Can check work here: https://secretscan.org/Bech32
 }
