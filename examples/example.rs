@@ -299,7 +299,7 @@ fn main() {
     let should_harden = true;
     let children_count = 5;
     let account = 0;
-    let should_include_change_addresses = false;
+    let should_include_change_addresses = true;
     // let found_children = get_bip32_derived_addresses(&derivation_path, master_keys, children_count, should_harden)
     let found_children = get_bip44_derived_addresses(
         account,
