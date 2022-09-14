@@ -1136,7 +1136,13 @@ pub fn get_derived_addresses_for_derivation_path(
         child_count,
         should_use_hardened_addresses,
     );
-    found_children
+    let mut found_children_with_full_derivation_path_as_key: HashMap<String, Keys> = HashMap::new();
+    for (key, value) in found_children {
+        let full_derivation_path_with_child = format!("{}/{}", derivation_path, key);
+        found_children_with_full_derivation_path_as_key
+            .insert(full_derivation_path_with_child, value);
+    }
+    found_children_with_full_derivation_path_as_key
 }
 pub fn convert_wif_to_private_key(wif: &String) -> String {
     // Check: https://coinb.in/#verify

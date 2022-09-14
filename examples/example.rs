@@ -11,7 +11,7 @@ use bitcoin_hd_keys::{
 };
 
 const NETWORK: Network = Network::Mainnet;
-const ADDRESS_TYPE: AddressType = AddressType::P2PKH;
+const ADDRESS_TYPE: AddressType = AddressType::Bech32;
 
 fn main() {
     let should_compress_wif = true;
@@ -77,7 +77,12 @@ fn main() {
 
     // ======================================================
 
-    let derivation_path = "m/0'/0'".to_string();
+    let bip32_derivation_path = "m/0'/0'".to_string(); // Must use with P2PKH
+    let bip44_derivation_path = "m/44'/0'/0'/0".to_string(); // Must use with P2PKH
+    let bip49_derivation_path = "m/49'/0'/0'/0".to_string(); // Must use with P2SH
+    let bip84_derivation_path = "m/84'/0'/0'/0".to_string(); // Must use with Bech32
+    let bip141_derivation_path = "m/0".to_string(); // Must use with P2SH
+    let derivation_path = bip141_derivation_path;
 
     let bip32_extended_keys = get_bip32_extended_keys_from_derivation_path(
         &derivation_path,
@@ -127,14 +132,195 @@ fn main() {
     //
     //
 
+    fn get_bip32_derived_addresses(
+        bip32_derivation_path: &String,
+        master_keys: MasterKeys,
+        children_count: i32,
+        should_harden: bool,
+    ) -> HashMap<String, Keys> {
+        // Notice: multiple wallets use different derivation paths. Source: https://iancoleman.io/bip39/
+        // - Bitcoincore
+        // - Blockchain.info
+        // - Multibit
+        // - Coinmomi
+        // // Todo: Maybe we should have presets for different vendors?
+        let found_children = get_derived_addresses_for_derivation_path(
+            &bip32_derivation_path,
+            master_keys,
+            children_count,
+            should_harden,
+        );
+        found_children
+    }
+
+    fn get_derived_addresses_from_5_levels(
+        purpose: u8,
+        cointype: u8,
+        account: i32,
+        should_include_change_addresses: bool,
+        master_keys: &MasterKeys,
+        children_count: i32,
+        should_harden: bool,
+    ) -> HashMap<String, Keys> {
+        let bip44_derivation_path_for_external_chain =
+            format!("m/{}'/{}'/{}'/0", purpose, cointype, account.to_string()).to_string(); // Must use with P2PKH
+
+        // internal chain is also known as a change address
+        let bip44_derivation_path_for_internal_chain =
+            format!("m/{}'/{}'/{}'/1", purpose, cointype, account.to_string()).to_string(); // Must use with P2PKH
+
+        // Notice: multiple wallets use different derivation paths. Source: https://iancoleman.io/bip39/
+        // - Bitcoincore
+        // - Blockchain.info
+        // - Multibit
+        // - Coinmomi
+        // // Todo: Maybe we should have presets for different vendors?
+        let found_children_for_external_chain = get_derived_addresses_for_derivation_path(
+            &bip44_derivation_path_for_external_chain,
+            master_keys.clone(),
+            children_count,
+            should_harden,
+        );
+        println!("{:#?}", found_children_for_external_chain);
+
+        let mut found_childrenn = found_children_for_external_chain.clone();
+        if should_include_change_addresses {
+            let found_children_for_internal_chain = get_derived_addresses_for_derivation_path(
+                &bip44_derivation_path_for_internal_chain,
+                master_keys.clone(),
+                children_count,
+                should_harden,
+            );
+            for (key, value) in found_children_for_internal_chain {
+                found_childrenn.insert(key, value);
+            }
+        }
+        found_childrenn
+    }
+
+    // TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
+    // private/public keys. See BIP44 section of: https://iancoleman.io/bip39/
+    fn get_bip44_derived_addresses(
+        account: i32,
+        should_include_change_addresses: bool,
+        master_keys: &MasterKeys,
+        children_count: i32,
+        should_harden: bool,
+    ) -> HashMap<String, Keys> {
+        // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
+        // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
+        // internal chain is also known as a change address
+        let purpose = 44;
+        let cointype = 0;
+        get_derived_addresses_from_5_levels(
+            purpose,
+            cointype,
+            account,
+            should_include_change_addresses,
+            master_keys,
+            children_count,
+            should_harden,
+        )
+    }
+    // TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
+    // private/public keys. See BIP49 section of: https://iancoleman.io/bip39/
+    fn get_bip49_derived_addresses(
+        account: i32,
+        should_include_change_addresses: bool,
+        master_keys: &MasterKeys,
+        children_count: i32,
+        should_harden: bool,
+    ) -> HashMap<String, Keys> {
+        // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
+        // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
+        // internal chain is also known as a change address
+        let purpose = 49;
+        let cointype = 0;
+        get_derived_addresses_from_5_levels(
+            purpose,
+            cointype,
+            account,
+            should_include_change_addresses,
+            master_keys,
+            children_count,
+            should_harden,
+        )
+    }
+    // TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
+    // private/public keys. See BIP49 section of: https://iancoleman.io/bip39/
+    fn get_bip84_derived_addresses(
+        account: i32,
+        should_include_change_addresses: bool,
+        master_keys: &MasterKeys,
+        children_count: i32,
+        should_harden: bool,
+    ) -> HashMap<String, Keys> {
+        // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
+        // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
+        // internal chain is also known as a change address
+        let purpose = 84;
+        let cointype = 0;
+        get_derived_addresses_from_5_levels(
+            purpose,
+            cointype,
+            account,
+            should_include_change_addresses,
+            master_keys,
+            children_count,
+            should_harden,
+        )
+    }
+
+    #[derive(Debug)]
+    struct Bip44DerivationPathInfo {
+        account_extended_private_key: String,
+        account_extended_public_key: String,
+    }
+    fn get_bip44_derivation_path_info(
+        account: i32,
+        master_keys: &MasterKeys,
+        network: Network,
+    ) -> Bip44DerivationPathInfo {
+        let purpose = 44;
+        let cointype = 0;
+        let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, cointype, account);
+        let bip32_extended_keys_for_account = get_bip32_extended_keys_from_derivation_path(
+            &account_derivation_path.to_string(),
+            &Keys::Master(master_keys.clone()),
+            network,
+        );
+
+        Bip44DerivationPathInfo {
+            account_extended_private_key: bip32_extended_keys_for_account.xpriv,
+            account_extended_public_key: bip32_extended_keys_for_account.xpub,
+        }
+    }
+
     let should_harden = true;
     let children_count = 5;
-    let found_children = get_derived_addresses_for_derivation_path(
-        &derivation_path,
-        master_keys,
+    let account = 0;
+    let should_include_change_addresses = false;
+    // let found_children = get_bip32_derived_addresses(&derivation_path, master_keys, children_count, should_harden)
+    let found_children = get_bip44_derived_addresses(
+        account,
+        should_include_change_addresses,
+        &master_keys,
         children_count,
         should_harden,
     );
+    let bip44_derivation_path_info =
+        get_bip44_derivation_path_info(account, &master_keys.clone(), NETWORK);
+    println!("{:#?}", bip44_derivation_path_info);
+    let bip32_extended_keys = get_bip32_extended_keys_from_derivation_path(
+        &"m/44'/0'/0'/0".to_string(),
+        &Keys::Master(master_keys.clone()),
+        NETWORK,
+    );
+    // let xpriv = &bip32_extended_keys.xpriv;
+    // let xpub = &bip32_extended_keys.xpub;
+    println!("{:#?}", bip32_extended_keys);
+    // let found_children = get_bip49_derived_addresses(1, false, master_keys, children_count, should_harden);
+    // let found_children = get_bip84_derived_addresses(1, false, master_keys, children_count, should_harden);
 
     for (key, value) in found_children {
         let should_compress = true;
@@ -143,8 +329,7 @@ fn main() {
             Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
         };
         println!(
-            "{}/{} {}     {}          {}",
-            &derivation_path,
+            "{} {}     {}          {}",
             key,
             value.get_address(NETWORK, ADDRESS_TYPE),
             public_key_hex,
