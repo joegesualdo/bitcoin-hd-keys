@@ -727,67 +727,62 @@ pub enum AddressType {
     P2SH,
     Bech32,
 }
+
+fn get_p2sh_address_from_pubkey_hash(public_key_hash: &String, network: Network) -> String {
+    // https://bitcoin.stackexchange.com/questions/75910/how-to-generate-a-native-segwit-address-and-p2sh-segwit-address-from-a-standard
+    let prefix_bytes = decode_hex("0014").unwrap();
+    let public_key_hash_bytes = decode_hex(public_key_hash).unwrap();
+    let redeem_script = concat_u8(&prefix_bytes, &public_key_hash_bytes);
+    let redeem_script_sha256 = sha256::digest_bytes(&redeem_script);
+    let redeem_script_sha256_as_hex_array = decode_hex(&redeem_script_sha256).unwrap();
+    let redeem_script_ripemd160 = ripemd160::Hash::hash(&redeem_script_sha256_as_hex_array);
+    let hash160 = redeem_script_ripemd160.to_string();
+    let hash160_bytes = decode_hex(&hash160).unwrap();
+    let p2sh_version_application_byte = "05";
+    let p2sh_testnet_version_application_byte = "c4";
+    let version_byte = match network {
+        Network::Mainnet => decode_hex(p2sh_version_application_byte).unwrap(),
+        Network::Testnet => decode_hex(p2sh_testnet_version_application_byte).unwrap(),
+    };
+    let hash160_with_version_byte = concat_u8(&version_byte, &hash160_bytes);
+    let address = check_encode_slice(&hash160_with_version_byte);
+    address
+}
+fn get_p2pkh_address_from_pubkey_hash(public_key_hash: &String, network: Network) -> String {
+    // SEE ALL VERSION APPLICATION CODES HERE: https://en.bitcoin.it/wiki/List_of_address_prefixes
+    // TODO: ALL ALL TYPES OF ADDRESSES
+    let p2pkh_version_application_byte = "00";
+    let p2pkh_testnet_version_application_byte = "6f";
+
+    let version_application_byte = match network {
+        Network::Mainnet => p2pkh_version_application_byte,
+        Network::Testnet => p2pkh_testnet_version_application_byte,
+    };
+    // AddressType::P2SH => match network {
+    //     Network::Mainnet => p2sh_version_application_byte,
+    //     Network::Testnet => p2sh_testnet_version_application_byte,
+    // },
+
+    // let hex_array = Vec::from_hex(public_key_hash).unwrap();
+    let hex_array = decode_hex(&public_key_hash).unwrap();
+    let version_array = decode_hex(version_application_byte).unwrap();
+    let a = concat_u8(&version_array, &hex_array);
+    // What does check encodings do?
+    //   - does a sha25 twice, then gets the first 4 bytes of that Result
+    //   - takes those first four bites and appends them to the original (version + hex array)
+    //   - Read "Encoding a bitcoin address": https://en.bitcoin.it/wiki/Base58Check_encoding
+    let address = check_encode_slice(&a);
+    address
+}
 fn get_address_from_pub_key_hash(
     public_key_hash: &String,
     network: Network,
     address_type: AddressType,
 ) -> String {
     match address_type {
-        AddressType::Bech32 => {
-            let bech32_address =
-                get_bech_32_address_from_pubkey_hash(&public_key_hash, network).clone();
-            bech32_address
-        } // println!("pub key: {}", pub_key);
-        AddressType::P2SH => {
-            // https://bitcoin.stackexchange.com/questions/75910/how-to-generate-a-native-segwit-address-and-p2sh-segwit-address-from-a-standard
-            let prefix_bytes = decode_hex("0014").unwrap();
-            let public_key_hash_bytes = decode_hex(public_key_hash).unwrap();
-            let redeem_script = concat_u8(&prefix_bytes, &public_key_hash_bytes);
-            let redeem_script_sha256 = sha256::digest_bytes(&redeem_script);
-            let redeem_script_sha256_as_hex_array = decode_hex(&redeem_script_sha256).unwrap();
-            let redeem_script_ripemd160 = ripemd160::Hash::hash(&redeem_script_sha256_as_hex_array);
-            let hash160 = redeem_script_ripemd160.to_string();
-            let hash160_bytes = decode_hex(&hash160).unwrap();
-            let p2sh_version_application_byte = "05";
-            let p2sh_testnet_version_application_byte = "c4";
-            let version_byte = match network {
-                Network::Mainnet => decode_hex(p2sh_version_application_byte).unwrap(),
-                Network::Testnet => decode_hex(p2sh_testnet_version_application_byte).unwrap(),
-            };
-            let hash160_with_version_byte = concat_u8(&version_byte, &hash160_bytes);
-            let address = check_encode_slice(&hash160_with_version_byte);
-            address
-        } // println!("pub key: {}", pub_key);
-        _ => {
-            // SEE ALL VERSION APPLICATION CODES HERE: https://en.bitcoin.it/wiki/List_of_address_prefixes
-            // TODO: ALL ALL TYPES OF ADDRESSES
-            let p2pkh_version_application_byte = "00";
-            let p2pkh_testnet_version_application_byte = "6f";
-
-            let version_application_byte = match address_type {
-                AddressType::P2PKH => match network {
-                    Network::Mainnet => p2pkh_version_application_byte,
-                    Network::Testnet => p2pkh_testnet_version_application_byte,
-                },
-                // AddressType::P2SH => match network {
-                //     Network::Mainnet => p2sh_version_application_byte,
-                //     Network::Testnet => p2sh_testnet_version_application_byte,
-                // },
-                AddressType::P2SH => panic!("shouldn't have gotten here"),
-                AddressType::Bech32 => panic!("shouldn't have gotten here"),
-            };
-
-            // let hex_array = Vec::from_hex(public_key_hash).unwrap();
-            let hex_array = decode_hex(&public_key_hash).unwrap();
-            let version_array = decode_hex(version_application_byte).unwrap();
-            let a = concat_u8(&version_array, &hex_array);
-            // What does check encodings do?
-            //   - does a sha25 twice, then gets the first 4 bytes of that Result
-            //   - takes those first four bites and appends them to the original (version + hex array)
-            //   - Read "Encoding a bitcoin address": https://en.bitcoin.it/wiki/Base58Check_encoding
-            let address = check_encode_slice(&a);
-            address
-        }
+        AddressType::P2PKH => get_p2pkh_address_from_pubkey_hash(public_key_hash, network),
+        AddressType::P2SH => get_p2sh_address_from_pubkey_hash(public_key_hash, network),
+        AddressType::Bech32 => get_bech_32_address_from_pubkey_hash(public_key_hash, network),
     }
 }
 
