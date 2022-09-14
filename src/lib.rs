@@ -23,6 +23,7 @@ use std::collections::HashMap;
 // SOURCES GOOD FOR TESTING:
 // - https://iancoleman.io/bip39/
 // - http://bip32.org/
+// - https://secretscan.org/PrivateKeyWif
 use std::fmt::Write;
 use std::num::{NonZeroU32, ParseIntError};
 use std::str::FromStr;
@@ -737,23 +738,42 @@ fn get_address_from_pub_key_hash(
                 get_bech_32_address_from_pubkey_hash(&public_key_hash, network).clone();
             bech32_address
         } // println!("pub key: {}", pub_key);
+        AddressType::P2SH => {
+            // https://bitcoin.stackexchange.com/questions/75910/how-to-generate-a-native-segwit-address-and-p2sh-segwit-address-from-a-standard
+            let prefix_bytes = decode_hex("0014").unwrap();
+            let public_key_hash_bytes = decode_hex(public_key_hash).unwrap();
+            let redeem_script = concat_u8(&prefix_bytes, &public_key_hash_bytes);
+            let redeem_script_sha256 = sha256::digest_bytes(&redeem_script);
+            let redeem_script_sha256_as_hex_array = decode_hex(&redeem_script_sha256).unwrap();
+            let redeem_script_ripemd160 = ripemd160::Hash::hash(&redeem_script_sha256_as_hex_array);
+            let hash160 = redeem_script_ripemd160.to_string();
+            let hash160_bytes = decode_hex(&hash160).unwrap();
+            let p2sh_version_application_byte = "05";
+            let p2sh_testnet_version_application_byte = "c4";
+            let version_byte = match network {
+                Network::Mainnet => decode_hex(p2sh_version_application_byte).unwrap(),
+                Network::Testnet => decode_hex(p2sh_testnet_version_application_byte).unwrap(),
+            };
+            let hash160_with_version_byte = concat_u8(&version_byte, &hash160_bytes);
+            let address = check_encode_slice(&hash160_with_version_byte);
+            address
+        } // println!("pub key: {}", pub_key);
         _ => {
             // SEE ALL VERSION APPLICATION CODES HERE: https://en.bitcoin.it/wiki/List_of_address_prefixes
             // TODO: ALL ALL TYPES OF ADDRESSES
             let p2pkh_version_application_byte = "00";
             let p2pkh_testnet_version_application_byte = "6f";
-            let p2sh_version_application_byte = "05";
-            let p2sh_testnet_version_application_byte = "c4";
 
             let version_application_byte = match address_type {
                 AddressType::P2PKH => match network {
                     Network::Mainnet => p2pkh_version_application_byte,
                     Network::Testnet => p2pkh_testnet_version_application_byte,
                 },
-                AddressType::P2SH => match network {
-                    Network::Mainnet => p2sh_version_application_byte,
-                    Network::Testnet => p2sh_testnet_version_application_byte,
-                },
+                // AddressType::P2SH => match network {
+                //     Network::Mainnet => p2sh_version_application_byte,
+                //     Network::Testnet => p2sh_testnet_version_application_byte,
+                // },
+                AddressType::P2SH => panic!("shouldn't have gotten here"),
                 AddressType::Bech32 => panic!("shouldn't have gotten here"),
             };
 
@@ -866,35 +886,6 @@ fn is_wif_compressed(wif: &String) -> bool {
         || first_char_of_wif == 'M'
         || first_char_of_wif == 'c';
     is_compressed_wif
-}
-fn convert_wif_to_private_key(wif: &String) -> String {
-    // Check: https://coinb.in/#verify
-    // Source:https://en.bitcoin.it/wiki/Wallet_import_format
-    // 1. decode the base58check
-
-    let is_compressed_wif = is_wif_compressed(wif);
-    let wif_base58check_decoded_result = from_check(&wif);
-    let wif_base58check_decoded = from_check(&wif).unwrap();
-    // 2. drop the fist byte
-    // TODO: It's more complicated than this: "Drop the first byte (it should be 0x80, however
-    // legacy Electrum[1][2] or some SegWit vanity address generators[3] may use 0x81-0x87). If
-    // the private key corresponded to a compressed public key, also drop the last byte (it
-    // should be 0x01). If it corresponded to a compressed public key, the WIF string will have
-    // started with K or L (or M, if it's exported from legacy Electrum[1][2] etc[3]) instead
-    // of 5 (or c instead of 9 on testnet). This is the private key."
-    // Source: https://en.bitcoin.it/wiki/Wallet_import_format
-    let wif_base58check_decoded_without_first_byte = wif_base58check_decoded.get(1..).unwrap();
-    let wif_base58check_decoded_without_first_byte_and_adjusted_for_compression =
-        if is_compressed_wif {
-            wif_base58check_decoded_without_first_byte
-                .get(..=(wif_base58check_decoded_without_first_byte.len() - 2))
-                .unwrap()
-        } else {
-            wif_base58check_decoded_without_first_byte
-        };
-    let wif_base58check_decoded_without_first_byte_and_adjusted_for_compression_hex =
-        encode_hex(wif_base58check_decoded_without_first_byte_and_adjusted_for_compression);
-    wif_base58check_decoded_without_first_byte_and_adjusted_for_compression_hex
 }
 fn get_public_key_from_private_key(private_key: &String, is_compressed: bool) -> String {
     // Create 512 bit public key
@@ -1066,6 +1057,12 @@ pub fn get_bip32_root_key_from_seed(bip39_seed: &String, network: Network) -> St
     let master_xprv = serialized_extended_master_keys.xpriv;
     master_xprv
 }
+pub fn get_bip32_root_key_from_master_keys(master_keys: &MasterKeys, network: Network) -> String {
+    let serialized_extended_master_keys = master_keys.serialize(network);
+
+    let master_xprv = serialized_extended_master_keys.xpriv;
+    master_xprv
+}
 pub fn get_bip32_extended_keys_from_derivation_path(
     derivation_path: &String,
     master_keys: &Keys,
@@ -1114,4 +1111,33 @@ pub fn get_derived_addresses_for_derivation_path(
         should_use_hardened_addresses,
     );
     found_children
+}
+pub fn convert_wif_to_private_key(wif: &String) -> String {
+    // Check: https://coinb.in/#verify
+    // Source:https://en.bitcoin.it/wiki/Wallet_import_format
+    // 1. decode the base58check
+
+    let is_compressed_wif = is_wif_compressed(wif);
+    let wif_base58check_decoded_result = from_check(&wif);
+    let wif_base58check_decoded = from_check(&wif).unwrap();
+    // 2. drop the fist byte
+    // TODO: It's more complicated than this: "Drop the first byte (it should be 0x80, however
+    // legacy Electrum[1][2] or some SegWit vanity address generators[3] may use 0x81-0x87). If
+    // the private key corresponded to a compressed public key, also drop the last byte (it
+    // should be 0x01). If it corresponded to a compressed public key, the WIF string will have
+    // started with K or L (or M, if it's exported from legacy Electrum[1][2] etc[3]) instead
+    // of 5 (or c instead of 9 on testnet). This is the private key."
+    // Source: https://en.bitcoin.it/wiki/Wallet_import_format
+    let wif_base58check_decoded_without_first_byte = wif_base58check_decoded.get(1..).unwrap();
+    let wif_base58check_decoded_without_first_byte_and_adjusted_for_compression =
+        if is_compressed_wif {
+            wif_base58check_decoded_without_first_byte
+                .get(..=(wif_base58check_decoded_without_first_byte.len() - 2))
+                .unwrap()
+        } else {
+            wif_base58check_decoded_without_first_byte
+        };
+    let wif_base58check_decoded_without_first_byte_and_adjusted_for_compression_hex =
+        encode_hex(wif_base58check_decoded_without_first_byte_and_adjusted_for_compression);
+    wif_base58check_decoded_without_first_byte_and_adjusted_for_compression_hex
 }
