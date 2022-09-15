@@ -78,7 +78,7 @@ bip84_hd_wallet.pretty_print_derived_addressed(Network::Testnet, AddressType::Be
 - [bitcoind-request](https://github.com/joegesualdo/bitcoind-request) - Type-safe wrapper around bitcoind RPC commands
 - [bitcoin-terminal-dashboard](https://github.com/joegesualdo/bitcoin-terminal-dashboard) - Bitcoin Dashboard in the terminal
 
-### Learn about HD Wallets
+## Learn about HD Wallets
 
 To learn more about HD Wallets and explore the resource material that was used to create this packacge, see [Resources.md](./Resources.md)
 
