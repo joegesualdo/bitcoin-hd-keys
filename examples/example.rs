@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 
 use bitcoin_hd_keys::{
-    generate_bip32_hd_wallet_from_mnemonic_words, generate_bip44_hd_wallet_from_mnemonic_words,
-    generate_bip49_hd_wallet_from_mnemonic_words, generate_bip84_hd_wallet_from_mnemonic_words,
-    get_128_bits_of_entropy, get_mnemonic_words, AddressType, Network,
+    create_fingerprint, generate_bip32_hd_wallet_from_mnemonic_words,
+    generate_bip44_hd_wallet_from_mnemonic_words, generate_bip49_hd_wallet_from_mnemonic_words,
+    generate_bip84_hd_wallet_from_mnemonic_words, get_128_bits_of_entropy, get_mnemonic_words,
+    AddressType, Network,
 };
 
 const NETWORK: Network = Network::Mainnet;
@@ -82,7 +83,7 @@ fn main() {
         Network::Testnet,
     );
     println!("{:#?}", sparrow_bip44_hd_wallet);
-    sparrow_bip44_hd_wallet.pretty_print_derived_addressed(Network::Testnet, AddressType::P2PKH);
+    sparrow_bip44_hd_wallet.pretty_print_derived_addressed(Network::Testnet);
 
     let sparrow_p2sh_wallet_mnemonic_words = vec![
         "spy".to_string(),
@@ -108,7 +109,7 @@ fn main() {
         Network::Testnet,
     );
     println!("{:#?}", sparrow_bip49_hd_wallet);
-    sparrow_bip49_hd_wallet.pretty_print_derived_addressed(Network::Testnet, AddressType::P2SH);
+    sparrow_bip49_hd_wallet.pretty_print_derived_addressed(Network::Testnet);
 
     let sparrow_p2wpkh_wallet_mnemonic_words = vec![
         "undo".to_string(),
@@ -134,5 +135,9 @@ fn main() {
         Network::Testnet,
     );
     println!("{:#?}", sparrow_bip84_hd_wallet);
-    sparrow_bip84_hd_wallet.pretty_print_derived_addressed(Network::Testnet, AddressType::Bech32);
+    sparrow_bip84_hd_wallet.pretty_print_derived_addressed(Network::Testnet);
+    // let fp = create_fingerprint(
+    //     "0290a2e96ae8e35adfe1a465fcd2145a83b864893c53051101b759014e558c9f41".to_string(),
+    // );
+    // println!("fp: {}", fp);
 }

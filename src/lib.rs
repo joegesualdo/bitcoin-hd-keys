@@ -337,6 +337,20 @@ pub enum Bip {
     Bip49,
     Bip84,
 }
+pub fn create_fingerprint(public_key_hex: &String) -> String {
+    let hex_byte_array = decode_hex(&public_key_hex).unwrap();
+    let mut hasher = Sha256::new();
+    // write input message
+    hasher.update(&hex_byte_array);
+    // read hash digest and consume hasher
+    let sha256_result = hasher.finalize();
+    let sha256_result_array = sha256_result.to_vec();
+
+    let ripemd160_result = ripemd160::Hash::hash(&sha256_result_array);
+    let first_four_bytes = &ripemd160_result[..4];
+    let first_four_hex = encode_hex(&first_four_bytes);
+    first_four_hex
+}
 
 fn serialize_key(args: SerializeKeyArgs) -> String {
     let SerializeKeyArgs {
@@ -348,20 +362,6 @@ fn serialize_key(args: SerializeKeyArgs) -> String {
         child_index,
         bip,
     } = args;
-    fn create_fingerprint(parent_public_key_hex: String) -> String {
-        let hex_byte_array = decode_hex(&parent_public_key_hex).unwrap();
-        let mut hasher = Sha256::new();
-        // write input message
-        hasher.update(&hex_byte_array);
-        // read hash digest and consume hasher
-        let sha256_result = hasher.finalize();
-        let sha256_result_array = sha256_result.to_vec();
-
-        let ripemd160_result = ripemd160::Hash::hash(&sha256_result_array);
-        let first_four_bytes = &ripemd160_result[..4];
-        let first_four_hex = encode_hex(&first_four_bytes);
-        first_four_hex
-    }
 
     fn hash256(hex: &String) -> String {
         let hex_byte_array = decode_hex(&hex).unwrap();
@@ -462,7 +462,7 @@ fn serialize_key(args: SerializeKeyArgs) -> String {
 
     let depth = convert_decimal_to_8_byte_hex_with(depth.unwrap_or(0));
     let parent_fingerprint = match &parent_public_key {
-        Some(parent_public_key) => create_fingerprint(parent_public_key.to_string()),
+        Some(parent_public_key) => create_fingerprint(&parent_public_key.to_string()),
         None => "00000000".to_string(),
     };
     // for child
@@ -1160,13 +1160,13 @@ fn get_bip32_extended_keys_from_derivation_path(
 
 fn get_derived_addresses_for_derivation_path(
     derivation_path: &String,
-    master_keys: MasterKeys,
+    master_keys: &MasterKeys,
     child_count: i32,
     should_use_hardened_addresses: bool,
 ) -> HashMap<String, Keys> {
     let found_children = get_children_keys_from_derivation_path(
         &derivation_path,
-        Keys::Master(master_keys),
+        Keys::Master(master_keys.clone()),
         child_count,
         should_use_hardened_addresses,
     );
@@ -1309,7 +1309,6 @@ fn get_master_keys_from_serialized_extended_private_master_key(
         }
         DecodedExtendedKeySerialized::PublicKey(_) => panic!("shouldn happen"),
     };
-    println!("{:#?}", decoded_xpriv_keys);
     if decoded_xpriv_keys.depth == 0 && decoded_xpriv_keys.child_index == 0 {
         let master_keys = MasterKeys {
             private_key_hex: decoded_xpriv_keys.private_key_hex,
@@ -1327,7 +1326,7 @@ fn get_master_keys_from_bip32_root_key(bip32_root_key: &String) -> MasterKeys {
 }
 fn get_bip32_derived_addresses(
     bip32_derivation_path: &String,
-    master_keys: MasterKeys,
+    master_keys: &MasterKeys,
     children_count: i32,
     should_harden: bool,
 ) -> HashMap<String, Keys> {
@@ -1370,7 +1369,7 @@ fn get_derived_addresses_from_5_levels(
     // // Todo: Maybe we should have presets for different vendors?
     let found_children_for_external_chain = get_derived_addresses_for_derivation_path(
         &bip44_derivation_path_for_external_chain,
-        master_keys.clone(),
+        &master_keys,
         children_count,
         should_harden,
     );
@@ -1379,7 +1378,7 @@ fn get_derived_addresses_from_5_levels(
     if should_include_change_addresses {
         let found_children_for_internal_chain = get_derived_addresses_for_derivation_path(
             &bip44_derivation_path_for_internal_chain,
-            master_keys.clone(),
+            &master_keys,
             children_count,
             should_harden,
         );
@@ -1543,11 +1542,13 @@ fn get_bip84_derivation_path_info(
 pub struct HDWalletBip32 {
     network: Network,
     bip39_seed: String,
+    master_keys: MasterKeys,
     bip32_root_key: String,
     bip32_root_pub_key: String,
     bip32_derivation_path: String,
     bip32_extended_private_key: String,
     bip32_extended_public_key: String,
+    master_fingerprint: String,
     derived_addresses: HashMap<String, Keys>,
 }
 impl HDWalletBip32 {
@@ -1598,6 +1599,7 @@ pub fn generate_bip32_hd_wallet_from_mnemonic_words(
     // ---------------------------------------------------------------------------
     // Can also get bip32 root key from masterkeys;
     let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
+    let master_fingerprint = create_fingerprint(&master_keys.public_key_hex);
     //
     let serialized_extended_master_keys = master_keys.serialize(network, bip);
 
@@ -1612,14 +1614,20 @@ pub fn generate_bip32_hd_wallet_from_mnemonic_words(
     let xpriv = &bip32_extended_keys.xpriv;
     let xpub = &bip32_extended_keys.xpub;
 
-    let found_children =
-        get_bip32_derived_addresses(&derivation_path, master_keys, children_count, should_harden);
+    let found_children = get_bip32_derived_addresses(
+        &derivation_path,
+        &master_keys,
+        children_count,
+        should_harden,
+    );
 
     HDWalletBip32 {
         network,
+        master_keys,
         bip39_seed,
         bip32_root_key,
         bip32_root_pub_key,
+        master_fingerprint,
         bip32_derivation_path: derivation_path,
         bip32_extended_private_key: xpriv.to_string(),
         bip32_extended_public_key: xpub.to_string(),
@@ -1630,8 +1638,10 @@ pub fn generate_bip32_hd_wallet_from_mnemonic_words(
 pub struct HDWalletBip44 {
     network: Network,
     bip39_seed: String,
+    master_keys: MasterKeys,
     bip32_root_key: String,
     bip32_root_pub_key: String,
+    master_fingerprint: String,
     purpose: i32,
     coin_type: i32,
     account: i32,
@@ -1648,11 +1658,8 @@ pub struct HDWalletBip44 {
     derived_addresses: HashMap<String, Keys>,
 }
 impl HDWalletBip44 {
-    pub fn pretty_print_derived_addressed(
-        &self,
-        network: Network,
-        address_type: AddressType,
-    ) -> () {
+    pub fn pretty_print_derived_addressed(&self, network: Network) -> () {
+        let address_type = AddressType::P2PKH;
         for (key, value) in self.derived_addresses.clone() {
             let should_compress = true;
             let public_key_hex = match &value {
@@ -1698,6 +1705,7 @@ pub fn generate_bip44_hd_wallet_from_mnemonic_words(
     // Can also get bip32 root key from masterkeys;
     let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
     //
+    let master_fingerprint = create_fingerprint(&master_keys.public_key_hex);
     let serialized_extended_master_keys = master_keys.serialize(network, bip);
 
     let bip32_root_pub_key = serialized_extended_master_keys.xpub;
@@ -1738,8 +1746,10 @@ pub fn generate_bip44_hd_wallet_from_mnemonic_words(
     HDWalletBip44 {
         network,
         bip39_seed,
+        master_keys,
         bip32_root_key,
         bip32_root_pub_key,
+        master_fingerprint,
         purpose,
         coin_type,
         account,
@@ -1759,9 +1769,11 @@ pub fn generate_bip44_hd_wallet_from_mnemonic_words(
 #[derive(Debug)]
 pub struct HDWalletBip49 {
     network: Network,
+    master_keys: MasterKeys,
     bip39_seed: String,
     bip32_root_key: String,
     bip32_root_pub_key: String,
+    master_fingerprint: String,
     purpose: i32,
     coin_type: i32,
     account: i32,
@@ -1778,11 +1790,8 @@ pub struct HDWalletBip49 {
     derived_addresses: HashMap<String, Keys>,
 }
 impl HDWalletBip49 {
-    pub fn pretty_print_derived_addressed(
-        &self,
-        network: Network,
-        address_type: AddressType,
-    ) -> () {
+    pub fn pretty_print_derived_addressed(&self, network: Network) -> () {
+        let address_type = AddressType::P2SH;
         for (key, value) in self.derived_addresses.clone() {
             let should_compress = true;
             let public_key_hex = match &value {
@@ -1831,6 +1840,7 @@ pub fn generate_bip49_hd_wallet_from_mnemonic_words(
     let serialized_extended_master_keys = master_keys.serialize(network, bip);
 
     let bip32_root_pub_key = serialized_extended_master_keys.xpub;
+    let master_fingerprint = create_fingerprint(&master_keys.public_key_hex);
 
     let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, coin_type, account);
     let derivation_path_external = format!("{}/0", account_derivation_path);
@@ -1868,8 +1878,10 @@ pub fn generate_bip49_hd_wallet_from_mnemonic_words(
     HDWalletBip49 {
         network,
         bip39_seed,
+        master_keys,
         bip32_root_key,
         bip32_root_pub_key,
+        master_fingerprint,
         purpose,
         coin_type,
         account,
@@ -1890,8 +1902,10 @@ pub fn generate_bip49_hd_wallet_from_mnemonic_words(
 pub struct HDWalletBip84 {
     network: Network,
     bip39_seed: String,
+    master_keys: MasterKeys,
     bip32_root_key: String,
     bip32_root_pub_key: String,
+    master_fingerprint: String,
     purpose: i32,
     coin_type: i32,
     account: i32,
@@ -1908,11 +1922,8 @@ pub struct HDWalletBip84 {
     derived_addresses: HashMap<String, Keys>,
 }
 impl HDWalletBip84 {
-    pub fn pretty_print_derived_addressed(
-        &self,
-        network: Network,
-        address_type: AddressType,
-    ) -> () {
+    pub fn pretty_print_derived_addressed(&self, network: Network) -> () {
+        let address_type = AddressType::Bech32;
         for (key, value) in self.derived_addresses.clone() {
             let should_compress = true;
             let public_key_hex = match &value {
@@ -1959,6 +1970,7 @@ pub fn generate_bip84_hd_wallet_from_mnemonic_words(
     let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
     //
     let serialized_extended_master_keys = master_keys.serialize(network, bip);
+    let master_fingerprint = create_fingerprint(&master_keys.public_key_hex);
 
     let bip32_root_pub_key = serialized_extended_master_keys.xpub;
     let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, coin_type, account);
@@ -1997,8 +2009,10 @@ pub fn generate_bip84_hd_wallet_from_mnemonic_words(
     HDWalletBip84 {
         network,
         bip39_seed,
+        master_keys,
         bip32_root_key,
         bip32_root_pub_key,
+        master_fingerprint,
         purpose,
         coin_type,
         account,
