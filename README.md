@@ -81,3 +81,6 @@ bip84_hd_wallet.pretty_print_derived_addressed(Network::Testnet, AddressType::Be
 ### Learn about HD Wallets
 
 To learn more about HD Wallets and explore the resource material that was used to create this packacge, see [Resources.md](./Resources.md)
+
+## License
+MIT © [Joe Gesualdo]()
