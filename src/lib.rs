@@ -1056,11 +1056,11 @@ pub fn get_mnemonic_words(entropy: Vec<u8>) -> Vec<String> {
         .collect();
     words
 }
-pub fn get_mnemonic_sentence(mnemonic_words: &Vec<String>) -> String {
+fn get_mnemonic_sentence(mnemonic_words: &Vec<String>) -> String {
     mnemonic_words.join(" ")
 }
 
-pub fn get_bip38_512_bit_private_key(words: Vec<String>, passphrase: Option<String>) -> String {
+fn get_bip38_512_bit_private_key(words: Vec<String>, passphrase: Option<String>) -> String {
     let mnemonic_sentence = words.join(" ");
 
     // ===== CREATE A PRIVATE KEY (512 bit seed) ==========================
@@ -1108,7 +1108,7 @@ pub fn get_bip38_512_bit_private_key(words: Vec<String>, passphrase: Option<Stri
 
     bip39_seed
 }
-pub fn get_master_keys_from_seed(bip39_seed: &String) -> MasterKeys {
+fn get_master_keys_from_seed(bip39_seed: &String) -> MasterKeys {
     let pbkdf2_hash = decode_hex(&bip39_seed).unwrap();
     let key = "Bitcoin seed";
     let h = HMAC::mac(pbkdf2_hash.to_vec(), key.as_bytes());
@@ -1129,14 +1129,14 @@ pub fn get_master_keys_from_seed(bip39_seed: &String) -> MasterKeys {
     };
     keys
 }
-pub fn get_bip32_root_key_from_seed(bip39_seed: &String, network: Network, bip: Bip) -> String {
+fn get_bip32_root_key_from_seed(bip39_seed: &String, network: Network, bip: Bip) -> String {
     let master_keys = get_master_keys_from_seed(&bip39_seed.to_string());
     let serialized_extended_master_keys = master_keys.serialize(network, bip);
 
     let master_xprv = serialized_extended_master_keys.xpriv;
     master_xprv
 }
-pub fn get_bip32_root_key_from_master_keys(
+fn get_bip32_root_key_from_master_keys(
     master_keys: &MasterKeys,
     network: Network,
     bip: Bip,
@@ -1146,7 +1146,7 @@ pub fn get_bip32_root_key_from_master_keys(
     let master_xprv = serialized_extended_master_keys.xpriv;
     master_xprv
 }
-pub fn get_bip32_extended_keys_from_derivation_path(
+fn get_bip32_extended_keys_from_derivation_path(
     derivation_path: &String,
     master_keys: &Keys,
     network: Network,
@@ -1183,7 +1183,7 @@ pub fn get_bip32_extended_keys_from_derivation_path(
     bip32_extended_keys
 }
 
-pub fn get_derived_addresses_for_derivation_path(
+fn get_derived_addresses_for_derivation_path(
     derivation_path: &String,
     master_keys: MasterKeys,
     child_count: i32,
@@ -1203,7 +1203,7 @@ pub fn get_derived_addresses_for_derivation_path(
     }
     found_children_with_full_derivation_path_as_key
 }
-pub fn convert_wif_to_private_key(wif: &String) -> String {
+fn convert_wif_to_private_key(wif: &String) -> String {
     // Check: https://coinb.in/#verify
     // Source:https://en.bitcoin.it/wiki/Wallet_import_format
     // 1. decode the base58check
@@ -1232,9 +1232,7 @@ pub fn convert_wif_to_private_key(wif: &String) -> String {
         encode_hex(wif_base58check_decoded_without_first_byte_and_adjusted_for_compression);
     wif_base58check_decoded_without_first_byte_and_adjusted_for_compression_hex
 }
-pub fn decode_serialized_extended_key(
-    extended_key_serialized: &str,
-) -> DecodedExtendedKeySerialized {
+fn decode_serialized_extended_key(extended_key_serialized: &str) -> DecodedExtendedKeySerialized {
     // Source (to check work): http://bip32.org/
     let decoded_result = from_check(extended_key_serialized).unwrap();
     let index_of_last_byte_of_version = 3;
@@ -1325,7 +1323,7 @@ pub fn decode_serialized_extended_key(
         })
     }
 }
-pub fn get_master_keys_from_serialized_extended_private_master_key(
+fn get_master_keys_from_serialized_extended_private_master_key(
     serialized_extended_private_key: &String,
 ) -> MasterKeys {
     let decoded_serialized_extended_key =
@@ -1349,6 +1347,666 @@ pub fn get_master_keys_from_serialized_extended_private_master_key(
     }
 }
 // Just a wapper for more specific naming
-pub fn get_master_keys_from_bip32_root_key(bip32_root_key: &String) -> MasterKeys {
+fn get_master_keys_from_bip32_root_key(bip32_root_key: &String) -> MasterKeys {
     get_master_keys_from_serialized_extended_private_master_key(bip32_root_key)
+}
+fn get_bip32_derived_addresses(
+    bip32_derivation_path: &String,
+    master_keys: MasterKeys,
+    children_count: i32,
+    should_harden: bool,
+) -> HashMap<String, Keys> {
+    // Notice: multiple wallets use different derivation paths. Source: https://iancoleman.io/bip39/
+    // - Bitcoincore
+    // - Blockchain.info
+    // - Multibit
+    // - Coinmomi
+    // // Todo: Maybe we should have presets for different vendors?
+    let found_children = get_derived_addresses_for_derivation_path(
+        &bip32_derivation_path,
+        master_keys,
+        children_count,
+        should_harden,
+    );
+    found_children
+}
+
+fn get_derived_addresses_from_5_levels(
+    purpose: u8,
+    cointype: u8,
+    account: i32,
+    should_include_change_addresses: bool,
+    master_keys: &MasterKeys,
+    children_count: i32,
+    should_harden: bool,
+) -> HashMap<String, Keys> {
+    let bip44_derivation_path_for_external_chain =
+        format!("m/{}'/{}'/{}'/0", purpose, cointype, account.to_string()).to_string(); // Must use with P2PKH
+
+    // internal chain is also known as a change address
+    let bip44_derivation_path_for_internal_chain =
+        format!("m/{}'/{}'/{}'/1", purpose, cointype, account.to_string()).to_string(); // Must use with P2PKH
+
+    // Notice: multiple wallets use different derivation paths. Source: https://iancoleman.io/bip39/
+    // - Bitcoincore
+    // - Blockchain.info
+    // - Multibit
+    // - Coinmomi
+    // // Todo: Maybe we should have presets for different vendors?
+    let found_children_for_external_chain = get_derived_addresses_for_derivation_path(
+        &bip44_derivation_path_for_external_chain,
+        master_keys.clone(),
+        children_count,
+        should_harden,
+    );
+
+    let mut found_childrenn = found_children_for_external_chain.clone();
+    if should_include_change_addresses {
+        let found_children_for_internal_chain = get_derived_addresses_for_derivation_path(
+            &bip44_derivation_path_for_internal_chain,
+            master_keys.clone(),
+            children_count,
+            should_harden,
+        );
+        for (key, value) in found_children_for_internal_chain {
+            found_childrenn.insert(key, value);
+        }
+    }
+    found_childrenn
+}
+
+// TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
+// private/public keys. See BIP44 section of: https://iancoleman.io/bip39/
+fn get_bip44_derived_addresses(
+    account: i32,
+    should_include_change_addresses: bool,
+    master_keys: &MasterKeys,
+    children_count: i32,
+    should_harden: bool,
+) -> HashMap<String, Keys> {
+    // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
+    // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
+    // internal chain is also known as a change address
+    let purpose = 44;
+    let cointype = 0;
+    get_derived_addresses_from_5_levels(
+        purpose,
+        cointype,
+        account,
+        should_include_change_addresses,
+        master_keys,
+        children_count,
+        should_harden,
+    )
+}
+// TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
+// private/public keys. See BIP49 section of: https://iancoleman.io/bip39/
+fn get_bip49_derived_addresses(
+    account: i32,
+    should_include_change_addresses: bool,
+    master_keys: &MasterKeys,
+    children_count: i32,
+    should_harden: bool,
+) -> HashMap<String, Keys> {
+    // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
+    // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
+    // internal chain is also known as a change address
+    let purpose = 49;
+    let cointype = 0;
+    get_derived_addresses_from_5_levels(
+        purpose,
+        cointype,
+        account,
+        should_include_change_addresses,
+        master_keys,
+        children_count,
+        should_harden,
+    )
+}
+// TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
+// private/public keys. See BIP49 section of: https://iancoleman.io/bip39/
+fn get_bip84_derived_addresses(
+    account: i32,
+    should_include_change_addresses: bool,
+    master_keys: &MasterKeys,
+    children_count: i32,
+    should_harden: bool,
+) -> HashMap<String, Keys> {
+    // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
+    // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
+    // internal chain is also known as a change address
+    let purpose = 84;
+    let cointype = 0;
+    get_derived_addresses_from_5_levels(
+        purpose,
+        cointype,
+        account,
+        should_include_change_addresses,
+        master_keys,
+        children_count,
+        should_harden,
+    )
+}
+
+#[derive(Debug)]
+struct Bip44DerivationPathInfo {
+    account_extended_private_key: String,
+    account_extended_public_key: String,
+}
+fn get_bip44_derivation_path_info(
+    account: i32,
+    master_keys: &MasterKeys,
+    network: Network,
+) -> Bip44DerivationPathInfo {
+    let purpose = 44;
+    let cointype = 0;
+    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, cointype, account);
+    let bip32_extended_keys_for_account = get_bip32_extended_keys_from_derivation_path(
+        &account_derivation_path.to_string(),
+        &Keys::Master(master_keys.clone()),
+        network,
+        Bip::Bip44,
+    );
+
+    Bip44DerivationPathInfo {
+        account_extended_private_key: bip32_extended_keys_for_account.xpriv,
+        account_extended_public_key: bip32_extended_keys_for_account.xpub,
+    }
+}
+#[derive(Debug)]
+struct Bip49DerivationPathInfo {
+    account_extended_private_key: String,
+    account_extended_public_key: String,
+}
+fn get_bip49_derivation_path_info(
+    account: i32,
+    master_keys: &MasterKeys,
+    network: Network,
+) -> Bip49DerivationPathInfo {
+    let purpose = 49;
+    let cointype = 0;
+    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, cointype, account);
+    let bip32_extended_keys_for_account = get_bip32_extended_keys_from_derivation_path(
+        &account_derivation_path.to_string(),
+        &Keys::Master(master_keys.clone()),
+        network,
+        Bip::Bip49,
+    );
+
+    Bip49DerivationPathInfo {
+        account_extended_private_key: bip32_extended_keys_for_account.xpriv,
+        account_extended_public_key: bip32_extended_keys_for_account.xpub,
+    }
+}
+#[derive(Debug)]
+struct Bip84DerivationPathInfo {
+    account_extended_private_key: String,
+    account_extended_public_key: String,
+}
+fn get_bip84_derivation_path_info(
+    account: i32,
+    master_keys: &MasterKeys,
+    network: Network,
+) -> Bip84DerivationPathInfo {
+    let purpose = 84;
+    let cointype = 0;
+    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, cointype, account);
+    let bip32_extended_keys_for_account = get_bip32_extended_keys_from_derivation_path(
+        &account_derivation_path.to_string(),
+        &Keys::Master(master_keys.clone()),
+        network,
+        Bip::Bip84,
+    );
+
+    Bip84DerivationPathInfo {
+        account_extended_private_key: bip32_extended_keys_for_account.xpriv,
+        account_extended_public_key: bip32_extended_keys_for_account.xpub,
+    }
+}
+
+#[derive(Debug)]
+pub struct HDWalletBip32 {
+    network: Network,
+    bip39_seed: String,
+    bip32_root_key: String,
+    bip32_derivation_path: String,
+    bip32_extended_private_key: String,
+    bip32_extended_public_key: String,
+    derived_addresses: HashMap<String, Keys>,
+}
+impl HDWalletBip32 {
+    pub fn pretty_print_derived_addressed(
+        &self,
+        network: Network,
+        address_type: AddressType,
+    ) -> () {
+        for (key, value) in self.derived_addresses.clone() {
+            let should_compress = true;
+            let public_key_hex = match &value {
+                Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
+                Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
+            };
+            println!(
+                "{} {}     {}          {}",
+                key,
+                value.get_address(network, address_type),
+                public_key_hex,
+                value.get_wif(network, should_compress)
+            )
+        }
+    }
+}
+
+pub fn generate_bip32_hd_wallet_from_mnemonic_words(
+    mnemonic_words: Vec<String>,
+    password: Option<String>,
+    derivation_path: String,
+    children_count: i32,
+    should_harden: bool,
+    network: Network,
+) -> HDWalletBip32 {
+    let bip = Bip::Bip32;
+    let passphrase = match password {
+        Some(password) => password,
+        None => "".to_string(),
+    };
+    let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
+    let bip32_root_key = get_bip32_root_key_from_seed(&bip39_seed, network, bip);
+    // Notice we have two ways to get the master keys: -------------------------
+    // 1) using seed
+    let master_keys_generated_from_seed = get_master_keys_from_seed(&bip39_seed);
+    // 2) using bip32 root key (extended private master key)
+    let master_keys_generated_from_bip32_root_key =
+        get_master_keys_from_bip32_root_key(&bip32_root_key);
+    let master_keys = master_keys_generated_from_seed;
+    // ---------------------------------------------------------------------------
+    // Can also get bip32 root key from masterkeys;
+    let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
+    //
+
+    let bip32_extended_keys = get_bip32_extended_keys_from_derivation_path(
+        &derivation_path,
+        &Keys::Master(master_keys.clone()),
+        network,
+        bip,
+    );
+    let xpriv = &bip32_extended_keys.xpriv;
+    let xpub = &bip32_extended_keys.xpub;
+
+    let found_children =
+        get_bip32_derived_addresses(&derivation_path, master_keys, children_count, should_harden);
+
+    HDWalletBip32 {
+        network,
+        bip39_seed,
+        bip32_root_key,
+        bip32_derivation_path: derivation_path,
+        bip32_extended_private_key: xpriv.to_string(),
+        bip32_extended_public_key: xpub.to_string(),
+        derived_addresses: found_children,
+    }
+}
+#[derive(Debug)]
+pub struct HDWalletBip44 {
+    network: Network,
+    bip39_seed: String,
+    bip32_root_key: String,
+    purpose: i32,
+    coin: i32,
+    account: i32,
+    // internal: bool,
+    account_extended_private_key: String,
+    account_extended_public_key: String,
+    derivation_path_external: String,
+    bip32_extended_private_key_for_external: String,
+    bip32_extended_public_key_for_external: String,
+    derivation_path_internal: String,
+    bip32_extended_private_key_for_internal: String,
+    bip32_extended_public_key_for_internal: String,
+    derived_addresses: HashMap<String, Keys>,
+}
+impl HDWalletBip44 {
+    pub fn pretty_print_derived_addressed(
+        &self,
+        network: Network,
+        address_type: AddressType,
+    ) -> () {
+        for (key, value) in self.derived_addresses.clone() {
+            let should_compress = true;
+            let public_key_hex = match &value {
+                Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
+                Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
+            };
+            println!(
+                "{} {}     {}          {}",
+                key,
+                value.get_address(network, address_type),
+                public_key_hex,
+                value.get_wif(network, should_compress)
+            )
+        }
+    }
+}
+pub fn generate_bip44_hd_wallet_from_mnemonic_words(
+    mnemonic_words: Vec<String>,
+    password: Option<String>,
+    account: i32,
+    children_count: i32,
+    should_harden: bool,
+    network: Network,
+) -> HDWalletBip44 {
+    let bip = Bip::Bip44;
+    let purpose = 44;
+    let coin = 0;
+
+    let passphrase = match password {
+        Some(password) => password,
+        None => "".to_string(),
+    };
+    let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
+    let bip32_root_key = get_bip32_root_key_from_seed(&bip39_seed, network, bip);
+    // Notice we have two ways to get the master keys: -------------------------
+    // 1) using seed
+    let master_keys_generated_from_seed = get_master_keys_from_seed(&bip39_seed);
+    // 2) using bip32 root key (extended private master key)
+    let master_keys_generated_from_bip32_root_key =
+        get_master_keys_from_bip32_root_key(&bip32_root_key);
+    let master_keys = master_keys_generated_from_seed;
+    // ---------------------------------------------------------------------------
+    // Can also get bip32 root key from masterkeys;
+    let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
+    //
+    let derivation_path_external = format!("m/{}'/{}'/{}'/0", purpose, coin, account);
+    let bip32_extended_keys_for_external = get_bip32_extended_keys_from_derivation_path(
+        &derivation_path_external,
+        &Keys::Master(master_keys.clone()),
+        network,
+        bip,
+    );
+    let bip32_extended_private_key_for_external = bip32_extended_keys_for_external.xpriv;
+    let bip32_extended_public_key_for_external = bip32_extended_keys_for_external.xpub;
+    // Change
+    let derivation_path_internal = format!("m/{}'/{}'/{}'/1", purpose, coin, account);
+    let bip32_extended_keys_for_internal = get_bip32_extended_keys_from_derivation_path(
+        &derivation_path_internal,
+        &Keys::Master(master_keys.clone()),
+        network,
+        bip,
+    );
+    let bip32_extended_private_key_for_internal = bip32_extended_keys_for_internal.xpriv;
+    let bip32_extended_public_key_for_internal = bip32_extended_keys_for_internal.xpub;
+
+    let should_include_change_addresses = true;
+    let found_children = get_bip44_derived_addresses(
+        account,
+        should_include_change_addresses,
+        &master_keys,
+        children_count,
+        should_harden,
+    );
+    let bip44_derivation_path_info =
+        get_bip44_derivation_path_info(account, &master_keys.clone(), network);
+    // println!("{:#?}", bip84_derivation_path_info);
+
+    HDWalletBip44 {
+        network,
+        bip39_seed,
+        bip32_root_key,
+        purpose,
+        coin,
+        account,
+        // internal: bool,
+        account_extended_private_key: bip44_derivation_path_info.account_extended_private_key,
+        account_extended_public_key: bip44_derivation_path_info.account_extended_public_key,
+        derivation_path_external,
+        bip32_extended_private_key_for_external,
+        bip32_extended_public_key_for_external,
+        derivation_path_internal,
+        bip32_extended_private_key_for_internal,
+        bip32_extended_public_key_for_internal,
+        derived_addresses: found_children,
+    }
+}
+#[derive(Debug)]
+pub struct HDWalletBip49 {
+    network: Network,
+    bip39_seed: String,
+    bip32_root_key: String,
+    purpose: i32,
+    coin: i32,
+    account: i32,
+    // internal: bool,
+    account_extended_private_key: String,
+    account_extended_public_key: String,
+    derivation_path_external: String,
+    bip32_extended_private_key_for_external: String,
+    bip32_extended_public_key_for_external: String,
+    derivation_path_internal: String,
+    bip32_extended_private_key_for_internal: String,
+    bip32_extended_public_key_for_internal: String,
+    derived_addresses: HashMap<String, Keys>,
+}
+impl HDWalletBip49 {
+    pub fn pretty_print_derived_addressed(
+        &self,
+        network: Network,
+        address_type: AddressType,
+    ) -> () {
+        for (key, value) in self.derived_addresses.clone() {
+            let should_compress = true;
+            let public_key_hex = match &value {
+                Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
+                Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
+            };
+            println!(
+                "{} {}     {}          {}",
+                key,
+                value.get_address(network, address_type),
+                public_key_hex,
+                value.get_wif(network, should_compress)
+            )
+        }
+    }
+}
+pub fn generate_bip49_hd_wallet_from_mnemonic_words(
+    mnemonic_words: Vec<String>,
+    password: Option<String>,
+    account: i32,
+    children_count: i32,
+    should_harden: bool,
+    network: Network,
+) -> HDWalletBip49 {
+    let bip = Bip::Bip49;
+    let purpose = 49;
+    let coin = 0;
+
+    let passphrase = match password {
+        Some(password) => password,
+        None => "".to_string(),
+    };
+    let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
+    let bip32_root_key = get_bip32_root_key_from_seed(&bip39_seed, network, bip);
+    // Notice we have two ways to get the master keys: -------------------------
+    // 1) using seed
+    let master_keys_generated_from_seed = get_master_keys_from_seed(&bip39_seed);
+    // 2) using bip32 root key (extended private master key)
+    let master_keys_generated_from_bip32_root_key =
+        get_master_keys_from_bip32_root_key(&bip32_root_key);
+    let master_keys = master_keys_generated_from_seed;
+    // ---------------------------------------------------------------------------
+    // Can also get bip32 root key from masterkeys;
+    let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
+    //
+    let derivation_path_external = format!("m/{}'/{}'/{}'/0", purpose, coin, account);
+    let bip32_extended_keys_for_external = get_bip32_extended_keys_from_derivation_path(
+        &derivation_path_external,
+        &Keys::Master(master_keys.clone()),
+        network,
+        bip,
+    );
+    let bip32_extended_private_key_for_external = bip32_extended_keys_for_external.xpriv;
+    let bip32_extended_public_key_for_external = bip32_extended_keys_for_external.xpub;
+    // Change
+    let derivation_path_internal = format!("m/{}'/{}'/{}'/1", purpose, coin, account);
+    let bip32_extended_keys_for_internal = get_bip32_extended_keys_from_derivation_path(
+        &derivation_path_internal,
+        &Keys::Master(master_keys.clone()),
+        network,
+        bip,
+    );
+    let bip32_extended_private_key_for_internal = bip32_extended_keys_for_internal.xpriv;
+    let bip32_extended_public_key_for_internal = bip32_extended_keys_for_internal.xpub;
+
+    let should_include_change_addresses = true;
+    let found_children = get_bip49_derived_addresses(
+        account,
+        should_include_change_addresses,
+        &master_keys,
+        children_count,
+        should_harden,
+    );
+    let bip49_derivation_path_info =
+        get_bip49_derivation_path_info(account, &master_keys.clone(), network);
+
+    HDWalletBip49 {
+        network,
+        bip39_seed,
+        bip32_root_key,
+        purpose,
+        coin,
+        account,
+        // internal: bool,
+        account_extended_private_key: bip49_derivation_path_info.account_extended_private_key,
+        account_extended_public_key: bip49_derivation_path_info.account_extended_public_key,
+        derivation_path_external,
+        bip32_extended_private_key_for_external,
+        bip32_extended_public_key_for_external,
+        derivation_path_internal,
+        bip32_extended_private_key_for_internal,
+        bip32_extended_public_key_for_internal,
+        derived_addresses: found_children,
+    }
+}
+#[derive(Debug)]
+pub struct HDWalletBip84 {
+    network: Network,
+    bip39_seed: String,
+    bip32_root_key: String,
+    purpose: i32,
+    coin: i32,
+    account: i32,
+    // internal: bool,
+    account_extended_private_key: String,
+    account_extended_public_key: String,
+    derivation_path_external: String,
+    bip32_extended_private_key_for_external: String,
+    bip32_extended_public_key_for_external: String,
+    derivation_path_internal: String,
+    bip32_extended_private_key_for_internal: String,
+    bip32_extended_public_key_for_internal: String,
+    derived_addresses: HashMap<String, Keys>,
+}
+impl HDWalletBip84 {
+    pub fn pretty_print_derived_addressed(
+        &self,
+        network: Network,
+        address_type: AddressType,
+    ) -> () {
+        for (key, value) in self.derived_addresses.clone() {
+            let should_compress = true;
+            let public_key_hex = match &value {
+                Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
+                Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
+            };
+            println!(
+                "{} {}     {}          {}",
+                key,
+                value.get_address(network, address_type),
+                public_key_hex,
+                value.get_wif(network, should_compress)
+            )
+        }
+    }
+}
+pub fn generate_bip84_hd_wallet_from_mnemonic_words(
+    mnemonic_words: Vec<String>,
+    password: Option<String>,
+    account: i32,
+    children_count: i32,
+    should_harden: bool,
+    network: Network,
+) -> HDWalletBip84 {
+    let bip = Bip::Bip84;
+    let purpose = 84;
+    let coin = 0;
+
+    let passphrase = match password {
+        Some(password) => password,
+        None => "".to_string(),
+    };
+    let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
+    let bip32_root_key = get_bip32_root_key_from_seed(&bip39_seed, network, bip);
+    // Notice we have two ways to get the master keys: -------------------------
+    // 1) using seed
+    let master_keys_generated_from_seed = get_master_keys_from_seed(&bip39_seed);
+    // 2) using bip32 root key (extended private master key)
+    let master_keys_generated_from_bip32_root_key =
+        get_master_keys_from_bip32_root_key(&bip32_root_key);
+    let master_keys = master_keys_generated_from_seed;
+    // ---------------------------------------------------------------------------
+    // Can also get bip32 root key from masterkeys;
+    let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
+    //
+    let derivation_path_external = format!("m/{}'/{}'/{}'/0", purpose, coin, account);
+    let bip32_extended_keys_for_external = get_bip32_extended_keys_from_derivation_path(
+        &derivation_path_external,
+        &Keys::Master(master_keys.clone()),
+        network,
+        bip,
+    );
+    let bip32_extended_private_key_for_external = bip32_extended_keys_for_external.xpriv;
+    let bip32_extended_public_key_for_external = bip32_extended_keys_for_external.xpub;
+    // Change
+    let derivation_path_internal = format!("m/{}'/{}'/{}'/1", purpose, coin, account);
+    let bip32_extended_keys_for_internal = get_bip32_extended_keys_from_derivation_path(
+        &derivation_path_internal,
+        &Keys::Master(master_keys.clone()),
+        network,
+        bip,
+    );
+    let bip32_extended_private_key_for_internal = bip32_extended_keys_for_internal.xpriv;
+    let bip32_extended_public_key_for_internal = bip32_extended_keys_for_internal.xpub;
+
+    let should_include_change_addresses = true;
+    let found_children = get_bip84_derived_addresses(
+        account,
+        should_include_change_addresses,
+        &master_keys,
+        children_count,
+        should_harden,
+    );
+    let bip84_derivation_path_info =
+        get_bip84_derivation_path_info(account, &master_keys.clone(), network);
+
+    HDWalletBip84 {
+        network,
+        bip39_seed,
+        bip32_root_key,
+        purpose,
+        coin,
+        account,
+        // internal: bool,
+        account_extended_private_key: bip84_derivation_path_info.account_extended_private_key,
+        account_extended_public_key: bip84_derivation_path_info.account_extended_public_key,
+        derivation_path_external,
+        bip32_extended_private_key_for_external,
+        bip32_extended_public_key_for_external,
+        derivation_path_internal,
+        bip32_extended_private_key_for_internal,
+        bip32_extended_public_key_for_internal,
+        derived_addresses: found_children,
+    }
+}
+pub fn generate_bip141_hd_wallet_from_mnemonic_words() {
+    todo!("Need to implement: https://iancoleman.io/bip39/");
 }
