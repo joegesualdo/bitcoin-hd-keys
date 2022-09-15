@@ -7,101 +7,13 @@ use bitcoin_hd_keys::{
     get_bip38_512_bit_private_key, get_derived_addresses_for_derivation_path,
     get_master_keys_from_bip32_root_key, get_master_keys_from_seed,
     get_master_keys_from_serialized_extended_private_master_key, get_mnemonic_sentence,
-    get_mnemonic_words, AddressType, DecodedExtendedKeySerialized, Keys, MasterKeys, Network,
+    get_mnemonic_words, AddressType, Bip, DecodedExtendedKeySerialized, Keys, MasterKeys, Network,
 };
 
 const NETWORK: Network = Network::Mainnet;
-const ADDRESS_TYPE: AddressType = AddressType::Bech32;
+const ADDRESS_TYPE: AddressType = AddressType::P2PKH;
 
 fn main() {
-    let should_compress_wif = true;
-    // 1) Use some cryptographically secure entropy generator to generate 128 bits of entropy.
-    // Create array of length 32 and fill with a random u8;
-    let entropy_array = get_128_bits_of_entropy();
-
-    let mnemonic_words = get_mnemonic_words(entropy_array.to_vec());
-    // let mnemonic_words = vec![
-    //     "couch".to_string(),
-    //     "wink".to_string(),
-    //     "dizzy".to_string(),
-    //     "net".to_string(),
-    //     "prison".to_string(),
-    //     "smile".to_string(),
-    //     "total".to_string(),
-    //     "zone".to_string(),
-    //     "orphan".to_string(),
-    //     "snake".to_string(),
-    //     "utility".to_string(),
-    //     "nerve".to_string(),
-    // ];
-
-    println!("MNEMONIC WORDS: {:?}", mnemonic_words);
-
-    let mnemonic_sentence = get_mnemonic_sentence(&mnemonic_words);
-
-    println!("MNEMONIC SENTENCE: {}", mnemonic_sentence);
-
-    // HARDCODED FOR TESTING
-    // let bip39_seed = "67f93560761e20617de26e0cb84f7234aaf373ed2e66295c3d7397e6d7ebe882ea396d5d293808b0defd7edd2babd4c091ad942e6a9351e6d075a29d4df872af".to_string();
-    // let bip39_seed = "c4f5d3f03269fe18101b4ba87810e07bdf63a67660c1467ff146836cd6772e092a9a10d6f6d65212085a0443b18d833721c7cb64bddef54c555ef2fdb48101a6".to_string();
-    let passphrase = "".to_string();
-    let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
-    println!("BIP39 SEED: {}", bip39_seed);
-    //
-    let bip32_root_key = get_bip32_root_key_from_seed(&bip39_seed, NETWORK);
-    println!("BIP39 Root Key: {}", bip32_root_key);
-
-    // ==========MASTER KEYS===============================
-    // TWO WAYS TO GET MASTER KEYS:
-    // 1) from bip39 seed
-    let master_keys = get_master_keys_from_seed(&bip39_seed);
-    // 2) from xpriv (root key)
-    let master_keys = get_master_keys_from_serialized_extended_private_master_key(&bip32_root_key);
-    // or use the wrapper
-    let master_keys = get_master_keys_from_bip32_root_key(&bip32_root_key);
-    //
-    println!("MASTER KEYS: {:#?}", &master_keys);
-    println!(
-        "MASTER WIF: {}",
-        &master_keys.get_wif(NETWORK, should_compress_wif)
-    );
-    println!(
-        "MASTER ADDRESS: {}",
-        master_keys.get_address(NETWORK, ADDRESS_TYPE),
-    );
-
-    println!("WIF: {}", master_keys.get_wif(NETWORK, should_compress_wif));
-    let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, NETWORK);
-    println!("BIP39 Root Key: {}", bip32_root_key);
-    // -------------------------------------------------
-
-    // ======================================================
-
-    let bip32_derivation_path = "m/0'/0'".to_string(); // Must use with P2PKH
-    let bip44_derivation_path = "m/44'/0'/0'/0".to_string(); // Must use with P2PKH
-    let bip49_derivation_path = "m/49'/0'/0'/0".to_string(); // Must use with P2SH
-    let bip84_derivation_path = "m/84'/0'/0'/0".to_string(); // Must use with Bech32
-    let bip141_derivation_path = "m/0".to_string(); // Must use with P2SH
-    let derivation_path = bip141_derivation_path;
-
-    let bip32_extended_keys = get_bip32_extended_keys_from_derivation_path(
-        &derivation_path,
-        &Keys::Master(master_keys.clone()),
-        NETWORK,
-    );
-    let xpriv = &bip32_extended_keys.xpriv;
-    let xpub = &bip32_extended_keys.xpub;
-
-    let decoded_serialized_extended_key = decode_serialized_extended_key(&xpriv);
-    println!("{:#?}", &decoded_serialized_extended_key);
-    println!(
-        "bip32_extended_public_key!: {:#?}",
-        bip32_extended_keys.xpub
-    );
-    println!(
-        "bip32_extended_private_key: {:#?}",
-        bip32_extended_keys.xpriv
-    );
     // let found_child = get_child_key_from_derivation_path("m/0".to_string(), master_keys.clone());
 
     // let found_child_xpub = serialize_key(SerializeKeyArgs {
@@ -288,9 +200,60 @@ fn main() {
             &account_derivation_path.to_string(),
             &Keys::Master(master_keys.clone()),
             network,
+            Bip::Bip44,
         );
 
         Bip44DerivationPathInfo {
+            account_extended_private_key: bip32_extended_keys_for_account.xpriv,
+            account_extended_public_key: bip32_extended_keys_for_account.xpub,
+        }
+    }
+    #[derive(Debug)]
+    struct Bip49DerivationPathInfo {
+        account_extended_private_key: String,
+        account_extended_public_key: String,
+    }
+    fn get_bip49_derivation_path_info(
+        account: i32,
+        master_keys: &MasterKeys,
+        network: Network,
+    ) -> Bip49DerivationPathInfo {
+        let purpose = 49;
+        let cointype = 0;
+        let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, cointype, account);
+        let bip32_extended_keys_for_account = get_bip32_extended_keys_from_derivation_path(
+            &account_derivation_path.to_string(),
+            &Keys::Master(master_keys.clone()),
+            network,
+            Bip::Bip49,
+        );
+
+        Bip49DerivationPathInfo {
+            account_extended_private_key: bip32_extended_keys_for_account.xpriv,
+            account_extended_public_key: bip32_extended_keys_for_account.xpub,
+        }
+    }
+    #[derive(Debug)]
+    struct Bip84DerivationPathInfo {
+        account_extended_private_key: String,
+        account_extended_public_key: String,
+    }
+    fn get_bip84_derivation_path_info(
+        account: i32,
+        master_keys: &MasterKeys,
+        network: Network,
+    ) -> Bip84DerivationPathInfo {
+        let purpose = 84;
+        let cointype = 0;
+        let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, cointype, account);
+        let bip32_extended_keys_for_account = get_bip32_extended_keys_from_derivation_path(
+            &account_derivation_path.to_string(),
+            &Keys::Master(master_keys.clone()),
+            network,
+            Bip::Bip84,
+        );
+
+        Bip84DerivationPathInfo {
             account_extended_private_key: bip32_extended_keys_for_account.xpriv,
             account_extended_public_key: bip32_extended_keys_for_account.xpub,
         }
@@ -301,39 +264,190 @@ fn main() {
     let account = 0;
     let should_include_change_addresses = true;
     // let found_children = get_bip32_derived_addresses(&derivation_path, master_keys, children_count, should_harden)
-    let found_children = get_bip44_derived_addresses(
-        account,
-        should_include_change_addresses,
-        &master_keys,
-        children_count,
-        should_harden,
-    );
-    let bip44_derivation_path_info =
-        get_bip44_derivation_path_info(account, &master_keys.clone(), NETWORK);
-    println!("{:#?}", bip44_derivation_path_info);
-    let bip32_extended_keys = get_bip32_extended_keys_from_derivation_path(
-        &"m/44'/0'/0'/0".to_string(),
-        &Keys::Master(master_keys.clone()),
-        NETWORK,
-    );
+    // let found_children = get_bip44_derived_addresses(
+    //     account,
+    //     should_include_change_addresses,
+    //     &master_keys,
+    //     children_count,
+    //     should_harden,
+    // );
+    // let bip44_derivation_path_info = get_bip44_derivation_path_info(account, &master_keys.clone(), NETWORK);
+    // let found_children = get_bip49_derived_addresses(
+    //     account,
+    //     should_include_change_addresses,
+    //     &master_keys,
+    //     children_count,
+    //     should_harden,
+    // );
+    // let bip49_derivation_path_info = get_bip49_derivation_path_info(account, &master_keys.clone(), NETWORK);
+    // println!("{:#?}", bip49_derivation_path_info);
+    // let bip32_extended_keys = get_bip32_extended_keys_from_derivation_path(
+    //     &"m/44'/0'/0'/0".to_string(),
+    //     &Keys::Master(master_keys.clone()),
+    //     NETWORK,
+    // );
     // let xpriv = &bip32_extended_keys.xpriv;
     // let xpub = &bip32_extended_keys.xpub;
-    println!("{:#?}", bip32_extended_keys);
+    // println!("{:#?}", bip32_extended_keys);
     // let found_children = get_bip49_derived_addresses(1, false, master_keys, children_count, should_harden);
-    // let found_children = get_bip84_derived_addresses(1, false, master_keys, children_count, should_harden);
 
-    for (key, value) in found_children {
-        let should_compress = true;
-        let public_key_hex = match &value {
-            Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
-            Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
-        };
-        println!(
-            "{} {}     {}          {}",
-            key,
-            value.get_address(NETWORK, ADDRESS_TYPE),
-            public_key_hex,
-            value.get_wif(NETWORK, should_compress)
-        )
+    #[derive(Debug)]
+    struct HDWalletBip32 {
+        network: Network,
+        bip39_seed: String,
+        bip32_root_key: String,
+        bip32_derivation_path: String,
+        bip32_extended_private_key: String,
+        bip32_extended_public_key: String,
+        derived_addresses: HashMap<String, Keys>,
     }
+    impl HDWalletBip32 {
+        fn pretty_print_derived_addressed(&self) -> () {
+            for (key, value) in self.derived_addresses.clone() {
+                let should_compress = true;
+                let public_key_hex = match &value {
+                    Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
+                    Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
+                };
+                println!(
+                    "{} {}     {}          {}",
+                    key,
+                    value.get_address(NETWORK, ADDRESS_TYPE),
+                    public_key_hex,
+                    value.get_wif(NETWORK, should_compress)
+                )
+            }
+        }
+    }
+    // 1) Use some cryptographically secure entropy generator to generate 128 bits of entropy.
+    // Create array of length 32 and fill with a random u8;
+    // let mnemonic_words = vec![
+    //     "couch".to_string(),
+    //     "wink".to_string(),
+    //     "dizzy".to_string(),
+    //     "net".to_string(),
+    //     "prison".to_string(),
+    //     "smile".to_string(),
+    //     "total".to_string(),
+    //     "zone".to_string(),
+    //     "orphan".to_string(),
+    //     "snake".to_string(),
+    //     "utility".to_string(),
+    //     "nerve".to_string(),
+    // ];
+
+    fn generate_bip32_hd_wallet_from_mnemonic_words(
+        mnemonic_words: Vec<String>,
+        password: Option<String>,
+        derivation_path: String,
+        children_count: i32,
+        should_harden: bool,
+        network: Network,
+    ) -> HDWalletBip32 {
+        let bip = Bip::Bip32;
+        let should_compress_wif = true;
+        // println!("MNEMONIC WORDS: {:?}", mnemonic_words);
+
+        let mnemonic_sentence = get_mnemonic_sentence(&mnemonic_words);
+
+        println!("MNEMONIC SENTENCE: {}", mnemonic_sentence);
+
+        // HARDCODED FOR TESTING
+        // let bip39_seed = "67f93560761e20617de26e0cb84f7234aaf373ed2e66295c3d7397e6d7ebe882ea396d5d293808b0defd7edd2babd4c091ad942e6a9351e6d075a29d4df872af".to_string();
+        // let bip39_seed = "c4f5d3f03269fe18101b4ba87810e07bdf63a67660c1467ff146836cd6772e092a9a10d6f6d65212085a0443b18d833721c7cb64bddef54c555ef2fdb48101a6".to_string();
+        let passphrase = "".to_string();
+        let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
+        println!("BIP39 SEED: {}", bip39_seed);
+        //
+        let bip32_root_key = get_bip32_root_key_from_seed(&bip39_seed, NETWORK, bip);
+        println!("BIP39 Root Key: {}", bip32_root_key);
+
+        // ==========MASTER KEYS===============================
+        // TWO WAYS TO GET MASTER KEYS:
+        // 1) from bip39 seed
+        let master_keys = get_master_keys_from_seed(&bip39_seed);
+        // 2) from xpriv (root key)
+        let master_keys =
+            get_master_keys_from_serialized_extended_private_master_key(&bip32_root_key);
+        // or use the wrapper
+        let master_keys = get_master_keys_from_bip32_root_key(&bip32_root_key);
+        //
+        // println!("MASTER KEYS: {:#?}", &master_keys);
+        // println!(
+        //     "MASTER WIF: {}",
+        //     &master_keys.get_wif(NETWORK, should_compress_wif)
+        // );
+        // println!(
+        //     "MASTER ADDRESS: {}",
+        //     master_keys.get_address(NETWORK, ADDRESS_TYPE),
+        // );
+
+        // println!("WIF: {}", master_keys.get_wif(NETWORK, should_compress_wif));
+        let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, NETWORK, bip);
+        println!("BIP39 Root Key: {}", bip32_root_key);
+        // -------------------------------------------------
+
+        // ======================================================
+
+        // let bip32_derivation_path = "m/0'/0'".to_string(); // Must use with P2PKH
+        // let bip44_derivation_path = "m/44'/0'/0'/0".to_string(); // Must use with P2PKH
+        // let bip49_derivation_path = "m/49'/0'/0'/0".to_string(); // Must use with P2SH
+        // let bip84_derivation_path = "m/84'/0'/0'/0".to_string(); // Must use with Bech32
+        // let bip141_derivation_path = "m/0".to_string(); // Must use with P2SH
+        // let derivation_path = bip141_derivation_path;
+
+        let bip32_extended_keys = get_bip32_extended_keys_from_derivation_path(
+            &derivation_path,
+            &Keys::Master(master_keys.clone()),
+            NETWORK,
+            bip,
+        );
+        let xpriv = &bip32_extended_keys.xpriv;
+        let xpub = &bip32_extended_keys.xpub;
+
+        // let decoded_serialized_extended_key = decode_serialized_extended_key(&xpriv);
+        // println!("{:#?}", &decoded_serialized_extended_key);
+        // println!(
+        //     "bip32_extended_public_key!: {:#?}",
+        //     bip32_extended_keys.xpub
+        // );
+        // println!(
+        //     "bip32_extended_private_key: {:#?}",
+        //     bip32_extended_keys.xpriv
+        // );
+        // let found_children = get_bip84_derived_addresses(1, false, &master_keys, children_count, should_harden);
+        // let bip84_derivation_path_info = get_bip84_derivation_path_info(account, &master_keys.clone(), NETWORK);
+        // println!("{:#?}", bip84_derivation_path_info);
+        let found_children = get_bip32_derived_addresses(
+            &derivation_path,
+            master_keys,
+            children_count,
+            should_harden,
+        );
+
+        HDWalletBip32 {
+            network: network,
+            bip39_seed,
+            bip32_root_key,
+            bip32_derivation_path: derivation_path,
+            bip32_extended_private_key: xpriv.to_string(),
+            bip32_extended_public_key: xpub.to_string(),
+            derived_addresses: found_children,
+        }
+    }
+    let entropy_array = get_128_bits_of_entropy();
+
+    let mnemonic_words = get_mnemonic_words(entropy_array.to_vec());
+
+    let bip32_hd_wallet = generate_bip32_hd_wallet_from_mnemonic_words(
+        mnemonic_words,
+        None,
+        "m/0'/0'".to_string(),
+        5,
+        true,
+        Network::Testnet,
+    );
+
+    println!("{:#?}", bip32_hd_wallet);
+    bip32_hd_wallet.pretty_print_derived_addressed();
 }

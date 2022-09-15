@@ -70,8 +70,9 @@ impl NonMasterKeys {
         depth: u8,
         child_index: u32,
         network: Network,
+        bip: Bip,
     ) -> SerializedExtendedKeys {
-        serialize_non_master_key(&self, parent_public_key, depth, child_index, network)
+        serialize_non_master_key(&self, parent_public_key, depth, child_index, network, bip)
     }
 }
 #[derive(Debug, Clone, Copy)]
@@ -92,8 +93,8 @@ impl MasterKeys {
     pub fn get_address(&self, network: Network, address_type: AddressType) -> String {
         get_address_from_pub_key(&self.public_key_hex, network, address_type)
     }
-    pub fn serialize(&self, network: Network) -> SerializedExtendedKeys {
-        serialize_master_key(self, network)
+    pub fn serialize(&self, network: Network, bip: Bip) -> SerializedExtendedKeys {
+        serialize_master_key(self, network, bip)
     }
 }
 
@@ -283,7 +284,11 @@ fn convert_binary_to_int(binary_string: &str) -> isize {
     intval
 }
 
-fn serialize_master_key(master_keys: &MasterKeys, network: Network) -> SerializedExtendedKeys {
+fn serialize_master_key(
+    master_keys: &MasterKeys,
+    network: Network,
+    bip: Bip,
+) -> SerializedExtendedKeys {
     let master_xprv = serialize_key(SerializeKeyArgs {
         keys_to_serialize: Keys::Master(master_keys.clone()).clone(),
         parent_public_key: None,
@@ -291,6 +296,7 @@ fn serialize_master_key(master_keys: &MasterKeys, network: Network) -> Serialize
         network: network,
         depth: Some(0),
         child_index: 0,
+        bip,
         // Note: always false for master key
     });
     let master_xpub = serialize_key(SerializeKeyArgs {
@@ -300,6 +306,7 @@ fn serialize_master_key(master_keys: &MasterKeys, network: Network) -> Serialize
         network: network,
         depth: Some(0),
         child_index: 0,
+        bip,
         // Note: always false for master key
     });
     SerializedExtendedKeys {
@@ -313,6 +320,7 @@ fn serialize_non_master_key(
     depth: u8,
     child_index: u32,
     network: Network,
+    bip: Bip,
 ) -> SerializedExtendedKeys {
     let bip32_extended_public_key = serialize_key(SerializeKeyArgs {
         keys_to_serialize: Keys::NonMaster(non_master_keys.clone()).clone(),
@@ -321,6 +329,7 @@ fn serialize_non_master_key(
         network,
         depth: Some(depth),
         child_index: child_index as u32,
+        bip,
     });
     let bip32_extended_private_key = serialize_key(SerializeKeyArgs {
         keys_to_serialize: Keys::NonMaster(non_master_keys.clone()).clone(),
@@ -329,6 +338,7 @@ fn serialize_non_master_key(
         network,
         depth: Some(depth),
         child_index: child_index as u32,
+        bip,
     });
     SerializedExtendedKeys {
         xpub: bip32_extended_public_key,
@@ -342,6 +352,15 @@ struct SerializeKeyArgs {
     pub network: Network,
     pub depth: Option<u8>,
     pub child_index: u32,
+    pub bip: Bip,
+}
+
+#[derive(Copy, Clone)]
+pub enum Bip {
+    Bip32,
+    Bip44,
+    Bip49,
+    Bip84,
 }
 
 fn serialize_key(args: SerializeKeyArgs) -> String {
@@ -352,6 +371,7 @@ fn serialize_key(args: SerializeKeyArgs) -> String {
         network,
         depth,
         child_index,
+        bip,
     } = args;
     fn create_fingerprint(parent_public_key_hex: String) -> String {
         let hex_byte_array = decode_hex(&parent_public_key_hex).unwrap();
@@ -416,15 +436,47 @@ fn serialize_key(args: SerializeKeyArgs) -> String {
 
     // TODO: Add all versions!
     // List of all the version possibilities: https://electrum.readthedocs.io/en/latest/xpub_version_bytes.html
-    let version = if is_public {
-        match network {
-            Network::Mainnet => "0488b21e",
-            Network::Testnet => "043587cf",
+    let version = match bip {
+        Bip::Bip32 | Bip::Bip44 => {
+            if is_public {
+                match network {
+                    Network::Mainnet => "0488b21e",
+                    Network::Testnet => "043587cf",
+                }
+            } else {
+                match network {
+                    Network::Mainnet => "0488ade4",
+                    Network::Testnet => "04358394",
+                }
+            }
         }
-    } else {
-        match network {
-            Network::Mainnet => "0488ade4",
-            Network::Testnet => "04358394",
+        Bip::Bip49 => {
+            // Source: https://github.com/bitcoin/bips/blob/master/bip-0049.mediawiki
+            if is_public {
+                match network {
+                    Network::Mainnet => "049d7cb2",
+                    Network::Testnet => "044a5262",
+                }
+            } else {
+                match network {
+                    Network::Mainnet => "049d7878",
+                    Network::Testnet => "044a4e28",
+                }
+            }
+        }
+        Bip::Bip84 => {
+            // Source: https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki
+            if is_public {
+                match network {
+                    Network::Mainnet => "04b24746",
+                    Network::Testnet => "045f1cf6",
+                }
+            } else {
+                match network {
+                    Network::Mainnet => "04b2430c",
+                    Network::Testnet => "045f18bc",
+                }
+            }
         }
     };
     let key = if is_public {
@@ -1076,15 +1128,19 @@ pub fn get_master_keys_from_seed(bip39_seed: &String) -> MasterKeys {
     };
     keys
 }
-pub fn get_bip32_root_key_from_seed(bip39_seed: &String, network: Network) -> String {
+pub fn get_bip32_root_key_from_seed(bip39_seed: &String, network: Network, bip: Bip) -> String {
     let master_keys = get_master_keys_from_seed(&bip39_seed.to_string());
-    let serialized_extended_master_keys = master_keys.serialize(network);
+    let serialized_extended_master_keys = master_keys.serialize(network, bip);
 
     let master_xprv = serialized_extended_master_keys.xpriv;
     master_xprv
 }
-pub fn get_bip32_root_key_from_master_keys(master_keys: &MasterKeys, network: Network) -> String {
-    let serialized_extended_master_keys = master_keys.serialize(network);
+pub fn get_bip32_root_key_from_master_keys(
+    master_keys: &MasterKeys,
+    network: Network,
+    bip: Bip,
+) -> String {
+    let serialized_extended_master_keys = master_keys.serialize(network, bip);
 
     let master_xprv = serialized_extended_master_keys.xpriv;
     master_xprv
@@ -1093,6 +1149,7 @@ pub fn get_bip32_extended_keys_from_derivation_path(
     derivation_path: &String,
     master_keys: &Keys,
     network: Network,
+    bip: Bip,
 ) -> SerializedExtendedKeys {
     let parent_deviation_path = get_parent_derivation_path(derivation_path);
     let derivation_child = get_child_index_from_derivation_path(derivation_path);
@@ -1117,8 +1174,9 @@ pub fn get_bip32_extended_keys_from_derivation_path(
             depth,
             derivation_child_index,
             network,
+            bip,
         ),
-        Keys::Master(master_keys) => master_keys.serialize(network),
+        Keys::Master(master_keys) => master_keys.serialize(network, bip),
     };
 
     bip32_extended_keys
@@ -1184,10 +1242,21 @@ pub fn decode_serialized_extended_key(
         .unwrap();
     let version_hex = encode_hex(version_bytes);
     let (network, is_public) = match version_hex.as_str() {
+        // bip32 version keys
         "0488b21e" => (Network::Mainnet, true),
         "043587cf" => (Network::Testnet, true),
         "0488ade4" => (Network::Mainnet, false),
         "04358394" => (Network::Testnet, false),
+        // bip49 version keys
+        "049d7cb2" => (Network::Mainnet, true),
+        "044a5262" => (Network::Testnet, true),
+        "049d7878" => (Network::Mainnet, false),
+        "044a4e28" => (Network::Testnet, false),
+        // bip84 version keys
+        "04b24746" => (Network::Mainnet, true),
+        "045f1cf6" => (Network::Testnet, true),
+        "04b2430c" => (Network::Mainnet, false),
+        "045f18bc" => (Network::Testnet, false),
         _ => panic!("Version  not recognized: {}", version_hex),
     };
 
