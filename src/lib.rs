@@ -1348,7 +1348,7 @@ fn get_bip32_derived_addresses(
 
 fn get_derived_addresses_from_5_levels(
     purpose: u8,
-    cointype: u8,
+    cointype: i32,
     account: i32,
     should_include_change_addresses: bool,
     master_keys: &MasterKeys,
@@ -1393,6 +1393,7 @@ fn get_derived_addresses_from_5_levels(
 // TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
 // private/public keys. See BIP44 section of: https://iancoleman.io/bip39/
 fn get_bip44_derived_addresses(
+    coin_type: i32,
     account: i32,
     should_include_change_addresses: bool,
     master_keys: &MasterKeys,
@@ -1403,10 +1404,9 @@ fn get_bip44_derived_addresses(
     // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
     // internal chain is also known as a change address
     let purpose = 44;
-    let cointype = 0;
     get_derived_addresses_from_5_levels(
         purpose,
-        cointype,
+        coin_type,
         account,
         should_include_change_addresses,
         master_keys,
@@ -1417,6 +1417,7 @@ fn get_bip44_derived_addresses(
 // TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
 // private/public keys. See BIP49 section of: https://iancoleman.io/bip39/
 fn get_bip49_derived_addresses(
+    coin_type: i32,
     account: i32,
     should_include_change_addresses: bool,
     master_keys: &MasterKeys,
@@ -1427,10 +1428,9 @@ fn get_bip49_derived_addresses(
     // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
     // internal chain is also known as a change address
     let purpose = 49;
-    let cointype = 0;
     get_derived_addresses_from_5_levels(
         purpose,
-        cointype,
+        coin_type,
         account,
         should_include_change_addresses,
         master_keys,
@@ -1441,6 +1441,7 @@ fn get_bip49_derived_addresses(
 // TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
 // private/public keys. See BIP49 section of: https://iancoleman.io/bip39/
 fn get_bip84_derived_addresses(
+    coin_type: i32,
     account: i32,
     should_include_change_addresses: bool,
     master_keys: &MasterKeys,
@@ -1451,10 +1452,9 @@ fn get_bip84_derived_addresses(
     // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
     // internal chain is also known as a change address
     let purpose = 84;
-    let cointype = 0;
     get_derived_addresses_from_5_levels(
         purpose,
-        cointype,
+        coin_type,
         account,
         should_include_change_addresses,
         master_keys,
@@ -1469,12 +1469,12 @@ struct Bip44DerivationPathInfo {
     account_extended_public_key: String,
 }
 fn get_bip44_derivation_path_info(
+    cointype: i32,
     account: i32,
     master_keys: &MasterKeys,
     network: Network,
 ) -> Bip44DerivationPathInfo {
     let purpose = 44;
-    let cointype = 0;
     let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, cointype, account);
     let bip32_extended_keys_for_account = get_bip32_extended_keys_from_derivation_path(
         &account_derivation_path.to_string(),
@@ -1494,13 +1494,13 @@ struct Bip49DerivationPathInfo {
     account_extended_public_key: String,
 }
 fn get_bip49_derivation_path_info(
+    coin_type: i32,
     account: i32,
     master_keys: &MasterKeys,
     network: Network,
 ) -> Bip49DerivationPathInfo {
     let purpose = 49;
-    let cointype = 0;
-    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, cointype, account);
+    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, coin_type, account);
     let bip32_extended_keys_for_account = get_bip32_extended_keys_from_derivation_path(
         &account_derivation_path.to_string(),
         &Keys::Master(master_keys.clone()),
@@ -1519,13 +1519,13 @@ struct Bip84DerivationPathInfo {
     account_extended_public_key: String,
 }
 fn get_bip84_derivation_path_info(
+    coin_type: i32,
     account: i32,
     master_keys: &MasterKeys,
     network: Network,
 ) -> Bip84DerivationPathInfo {
     let purpose = 84;
-    let cointype = 0;
-    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, cointype, account);
+    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, coin_type, account);
     let bip32_extended_keys_for_account = get_bip32_extended_keys_from_derivation_path(
         &account_derivation_path.to_string(),
         &Keys::Master(master_keys.clone()),
@@ -1544,6 +1544,7 @@ pub struct HDWalletBip32 {
     network: Network,
     bip39_seed: String,
     bip32_root_key: String,
+    bip32_root_pub_key: String,
     bip32_derivation_path: String,
     bip32_extended_private_key: String,
     bip32_extended_public_key: String,
@@ -1598,6 +1599,9 @@ pub fn generate_bip32_hd_wallet_from_mnemonic_words(
     // Can also get bip32 root key from masterkeys;
     let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
     //
+    let serialized_extended_master_keys = master_keys.serialize(network, bip);
+
+    let bip32_root_pub_key = serialized_extended_master_keys.xpub;
 
     let bip32_extended_keys = get_bip32_extended_keys_from_derivation_path(
         &derivation_path,
@@ -1615,6 +1619,7 @@ pub fn generate_bip32_hd_wallet_from_mnemonic_words(
         network,
         bip39_seed,
         bip32_root_key,
+        bip32_root_pub_key,
         bip32_derivation_path: derivation_path,
         bip32_extended_private_key: xpriv.to_string(),
         bip32_extended_public_key: xpub.to_string(),
@@ -1626,10 +1631,12 @@ pub struct HDWalletBip44 {
     network: Network,
     bip39_seed: String,
     bip32_root_key: String,
+    bip32_root_pub_key: String,
     purpose: i32,
-    coin: i32,
+    coin_type: i32,
     account: i32,
     // internal: bool,
+    account_derivation_path: String,
     account_extended_private_key: String,
     account_extended_public_key: String,
     derivation_path_external: String,
@@ -1665,6 +1672,7 @@ impl HDWalletBip44 {
 pub fn generate_bip44_hd_wallet_from_mnemonic_words(
     mnemonic_words: Vec<String>,
     password: Option<String>,
+    coin_type: i32,
     account: i32,
     children_count: i32,
     should_harden: bool,
@@ -1672,7 +1680,6 @@ pub fn generate_bip44_hd_wallet_from_mnemonic_words(
 ) -> HDWalletBip44 {
     let bip = Bip::Bip44;
     let purpose = 44;
-    let coin = 0;
 
     let passphrase = match password {
         Some(password) => password,
@@ -1691,7 +1698,11 @@ pub fn generate_bip44_hd_wallet_from_mnemonic_words(
     // Can also get bip32 root key from masterkeys;
     let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
     //
-    let derivation_path_external = format!("m/{}'/{}'/{}'/0", purpose, coin, account);
+    let serialized_extended_master_keys = master_keys.serialize(network, bip);
+
+    let bip32_root_pub_key = serialized_extended_master_keys.xpub;
+    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, coin_type, account);
+    let derivation_path_external = format!("{}/0", account_derivation_path);
     let bip32_extended_keys_for_external = get_bip32_extended_keys_from_derivation_path(
         &derivation_path_external,
         &Keys::Master(master_keys.clone()),
@@ -1701,7 +1712,7 @@ pub fn generate_bip44_hd_wallet_from_mnemonic_words(
     let bip32_extended_private_key_for_external = bip32_extended_keys_for_external.xpriv;
     let bip32_extended_public_key_for_external = bip32_extended_keys_for_external.xpub;
     // Change
-    let derivation_path_internal = format!("m/{}'/{}'/{}'/1", purpose, coin, account);
+    let derivation_path_internal = format!("{}/1", account_derivation_path);
     let bip32_extended_keys_for_internal = get_bip32_extended_keys_from_derivation_path(
         &derivation_path_internal,
         &Keys::Master(master_keys.clone()),
@@ -1713,6 +1724,7 @@ pub fn generate_bip44_hd_wallet_from_mnemonic_words(
 
     let should_include_change_addresses = true;
     let found_children = get_bip44_derived_addresses(
+        coin_type,
         account,
         should_include_change_addresses,
         &master_keys,
@@ -1720,17 +1732,19 @@ pub fn generate_bip44_hd_wallet_from_mnemonic_words(
         should_harden,
     );
     let bip44_derivation_path_info =
-        get_bip44_derivation_path_info(account, &master_keys.clone(), network);
+        get_bip44_derivation_path_info(coin_type, account, &master_keys.clone(), network);
     // println!("{:#?}", bip84_derivation_path_info);
 
     HDWalletBip44 {
         network,
         bip39_seed,
         bip32_root_key,
+        bip32_root_pub_key,
         purpose,
-        coin,
+        coin_type,
         account,
         // internal: bool,
+        account_derivation_path,
         account_extended_private_key: bip44_derivation_path_info.account_extended_private_key,
         account_extended_public_key: bip44_derivation_path_info.account_extended_public_key,
         derivation_path_external,
@@ -1747,10 +1761,12 @@ pub struct HDWalletBip49 {
     network: Network,
     bip39_seed: String,
     bip32_root_key: String,
+    bip32_root_pub_key: String,
     purpose: i32,
-    coin: i32,
+    coin_type: i32,
     account: i32,
     // internal: bool,
+    account_derivation_path: String,
     account_extended_private_key: String,
     account_extended_public_key: String,
     derivation_path_external: String,
@@ -1786,6 +1802,7 @@ impl HDWalletBip49 {
 pub fn generate_bip49_hd_wallet_from_mnemonic_words(
     mnemonic_words: Vec<String>,
     password: Option<String>,
+    coin_type: i32,
     account: i32,
     children_count: i32,
     should_harden: bool,
@@ -1793,7 +1810,6 @@ pub fn generate_bip49_hd_wallet_from_mnemonic_words(
 ) -> HDWalletBip49 {
     let bip = Bip::Bip49;
     let purpose = 49;
-    let coin = 0;
 
     let passphrase = match password {
         Some(password) => password,
@@ -1812,7 +1828,12 @@ pub fn generate_bip49_hd_wallet_from_mnemonic_words(
     // Can also get bip32 root key from masterkeys;
     let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
     //
-    let derivation_path_external = format!("m/{}'/{}'/{}'/0", purpose, coin, account);
+    let serialized_extended_master_keys = master_keys.serialize(network, bip);
+
+    let bip32_root_pub_key = serialized_extended_master_keys.xpub;
+
+    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, coin_type, account);
+    let derivation_path_external = format!("{}/0", account_derivation_path);
     let bip32_extended_keys_for_external = get_bip32_extended_keys_from_derivation_path(
         &derivation_path_external,
         &Keys::Master(master_keys.clone()),
@@ -1822,7 +1843,7 @@ pub fn generate_bip49_hd_wallet_from_mnemonic_words(
     let bip32_extended_private_key_for_external = bip32_extended_keys_for_external.xpriv;
     let bip32_extended_public_key_for_external = bip32_extended_keys_for_external.xpub;
     // Change
-    let derivation_path_internal = format!("m/{}'/{}'/{}'/1", purpose, coin, account);
+    let derivation_path_internal = format!("{}/1", account_derivation_path);
     let bip32_extended_keys_for_internal = get_bip32_extended_keys_from_derivation_path(
         &derivation_path_internal,
         &Keys::Master(master_keys.clone()),
@@ -1834,6 +1855,7 @@ pub fn generate_bip49_hd_wallet_from_mnemonic_words(
 
     let should_include_change_addresses = true;
     let found_children = get_bip49_derived_addresses(
+        coin_type,
         account,
         should_include_change_addresses,
         &master_keys,
@@ -1841,16 +1863,18 @@ pub fn generate_bip49_hd_wallet_from_mnemonic_words(
         should_harden,
     );
     let bip49_derivation_path_info =
-        get_bip49_derivation_path_info(account, &master_keys.clone(), network);
+        get_bip49_derivation_path_info(coin_type, account, &master_keys.clone(), network);
 
     HDWalletBip49 {
         network,
         bip39_seed,
         bip32_root_key,
+        bip32_root_pub_key,
         purpose,
-        coin,
+        coin_type,
         account,
         // internal: bool,
+        account_derivation_path,
         account_extended_private_key: bip49_derivation_path_info.account_extended_private_key,
         account_extended_public_key: bip49_derivation_path_info.account_extended_public_key,
         derivation_path_external,
@@ -1867,10 +1891,12 @@ pub struct HDWalletBip84 {
     network: Network,
     bip39_seed: String,
     bip32_root_key: String,
+    bip32_root_pub_key: String,
     purpose: i32,
-    coin: i32,
+    coin_type: i32,
     account: i32,
     // internal: bool,
+    account_derivation_path: String,
     account_extended_private_key: String,
     account_extended_public_key: String,
     derivation_path_external: String,
@@ -1906,6 +1932,7 @@ impl HDWalletBip84 {
 pub fn generate_bip84_hd_wallet_from_mnemonic_words(
     mnemonic_words: Vec<String>,
     password: Option<String>,
+    coin_type: i32,
     account: i32,
     children_count: i32,
     should_harden: bool,
@@ -1913,7 +1940,6 @@ pub fn generate_bip84_hd_wallet_from_mnemonic_words(
 ) -> HDWalletBip84 {
     let bip = Bip::Bip84;
     let purpose = 84;
-    let coin = 0;
 
     let passphrase = match password {
         Some(password) => password,
@@ -1932,7 +1958,11 @@ pub fn generate_bip84_hd_wallet_from_mnemonic_words(
     // Can also get bip32 root key from masterkeys;
     let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
     //
-    let derivation_path_external = format!("m/{}'/{}'/{}'/0", purpose, coin, account);
+    let serialized_extended_master_keys = master_keys.serialize(network, bip);
+
+    let bip32_root_pub_key = serialized_extended_master_keys.xpub;
+    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, coin_type, account);
+    let derivation_path_external = format!("{}/0", account_derivation_path);
     let bip32_extended_keys_for_external = get_bip32_extended_keys_from_derivation_path(
         &derivation_path_external,
         &Keys::Master(master_keys.clone()),
@@ -1942,7 +1972,7 @@ pub fn generate_bip84_hd_wallet_from_mnemonic_words(
     let bip32_extended_private_key_for_external = bip32_extended_keys_for_external.xpriv;
     let bip32_extended_public_key_for_external = bip32_extended_keys_for_external.xpub;
     // Change
-    let derivation_path_internal = format!("m/{}'/{}'/{}'/1", purpose, coin, account);
+    let derivation_path_internal = format!("{}/1", account_derivation_path);
     let bip32_extended_keys_for_internal = get_bip32_extended_keys_from_derivation_path(
         &derivation_path_internal,
         &Keys::Master(master_keys.clone()),
@@ -1954,6 +1984,7 @@ pub fn generate_bip84_hd_wallet_from_mnemonic_words(
 
     let should_include_change_addresses = true;
     let found_children = get_bip84_derived_addresses(
+        coin_type,
         account,
         should_include_change_addresses,
         &master_keys,
@@ -1961,16 +1992,18 @@ pub fn generate_bip84_hd_wallet_from_mnemonic_words(
         should_harden,
     );
     let bip84_derivation_path_info =
-        get_bip84_derivation_path_info(account, &master_keys.clone(), network);
+        get_bip84_derivation_path_info(coin_type, account, &master_keys.clone(), network);
 
     HDWalletBip84 {
         network,
         bip39_seed,
         bip32_root_key,
+        bip32_root_pub_key,
         purpose,
-        coin,
+        coin_type,
         account,
         // internal: bool,
+        account_derivation_path,
         account_extended_private_key: bip84_derivation_path_info.account_extended_private_key,
         account_extended_public_key: bip84_derivation_path_info.account_extended_public_key,
         derivation_path_external,
