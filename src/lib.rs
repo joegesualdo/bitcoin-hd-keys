@@ -802,6 +802,7 @@ fn get_wif_from_private_key(
     wif_private_key
 }
 
+#[derive(Copy, Clone)]
 pub enum AddressType {
     P2PKH,
     P2SH,
