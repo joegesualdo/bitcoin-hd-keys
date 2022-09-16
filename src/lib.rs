@@ -1179,12 +1179,12 @@ fn get_derived_addresses_for_derivation_path(
     found_children_with_full_derivation_path_as_key
 }
 
-pub fn get_public_key_hash_from_address(address: &String) {
+pub fn get_public_key_hash_from_address(address: &String) -> String {
     let address_base58check_decoded = from_check(&address).unwrap();
     let address_base58check_decoded_without_first_byte =
         address_base58check_decoded.get(1..).unwrap();
     let pub_key_hash = encode_hex(&address_base58check_decoded_without_first_byte);
-    println!("{}", pub_key_hash)
+    pub_key_hash
 }
 pub fn convert_wif_to_private_key(wif: &String) -> String {
     // Check: https://coinb.in/#verify

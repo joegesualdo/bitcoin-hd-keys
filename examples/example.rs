@@ -140,5 +140,4 @@ fn main() {
     //     "0290a2e96ae8e35adfe1a465fcd2145a83b864893c53051101b759014e558c9f41".to_string(),
     // );
     // println!("fp: {}", fp);
-    get_public_key_hash_from_address(&"n22i3har2xwopMw3u6b2UTQ5TgBqJMjYMN".to_string());
 }
