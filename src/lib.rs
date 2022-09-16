@@ -352,6 +352,24 @@ pub fn create_fingerprint(public_key_hex: &String) -> String {
     first_four_hex
 }
 
+pub fn double_sha256(hex: &String) -> String {
+    let hex_byte_array = decode_hex(&hex).unwrap();
+    let mut hasher = Sha256::new();
+    // write input message
+    hasher.update(&hex_byte_array);
+    // read hash digest and consume hasher
+    let sha256_result = hasher.finalize();
+    let sha256_result_array = sha256_result.to_vec();
+
+    let hex_byte_array_2 = sha256_result_array;
+    let mut hasher_2 = Sha256::new();
+    // write input message
+    hasher_2.update(&hex_byte_array_2);
+    // read hash digest and consume hasher
+    let sha256_result_2 = hasher_2.finalize();
+    let sha256_result_array_2 = sha256_result_2.to_vec();
+    encode_hex(&sha256_result_array_2)
+}
 fn serialize_key(args: SerializeKeyArgs) -> String {
     let SerializeKeyArgs {
         keys_to_serialize,
@@ -363,26 +381,8 @@ fn serialize_key(args: SerializeKeyArgs) -> String {
         bip,
     } = args;
 
-    fn hash256(hex: &String) -> String {
-        let hex_byte_array = decode_hex(&hex).unwrap();
-        let mut hasher = Sha256::new();
-        // write input message
-        hasher.update(&hex_byte_array);
-        // read hash digest and consume hasher
-        let sha256_result = hasher.finalize();
-        let sha256_result_array = sha256_result.to_vec();
-
-        let hex_byte_array_2 = sha256_result_array;
-        let mut hasher_2 = Sha256::new();
-        // write input message
-        hasher_2.update(&hex_byte_array_2);
-        // read hash digest and consume hasher
-        let sha256_result_2 = hasher_2.finalize();
-        let sha256_result_array_2 = sha256_result_2.to_vec();
-        encode_hex(&sha256_result_array_2)
-    }
     fn checksum(hex: &String) -> String {
-        let hash = hash256(&hex);
+        let hash = double_sha256(&hex);
         let hash_byte_array = decode_hex(&hash).unwrap();
         let first_four_bytes = &hash_byte_array[0..=3];
         encode_hex(first_four_bytes)
