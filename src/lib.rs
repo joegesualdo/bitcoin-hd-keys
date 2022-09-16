@@ -1178,7 +1178,7 @@ fn get_derived_addresses_for_derivation_path(
     }
     found_children_with_full_derivation_path_as_key
 }
-fn convert_wif_to_private_key(wif: &String) -> String {
+pub fn convert_wif_to_private_key(wif: &String) -> String {
     // Check: https://coinb.in/#verify
     // Source:https://en.bitcoin.it/wiki/Wallet_import_format
     // 1. decode the base58check
@@ -1670,7 +1670,7 @@ impl HDWalletBip44 {
                 "{} {}     {}          {}",
                 key,
                 value.get_address(network, address_type),
-                public_key_hex,
+                get_public_key_hash(&public_key_hex),
                 value.get_wif(network, should_compress)
             )
         }
