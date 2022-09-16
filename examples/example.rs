@@ -4,7 +4,7 @@ use bitcoin_hd_keys::{
     create_fingerprint, generate_bip32_hd_wallet_from_mnemonic_words,
     generate_bip44_hd_wallet_from_mnemonic_words, generate_bip49_hd_wallet_from_mnemonic_words,
     generate_bip84_hd_wallet_from_mnemonic_words, get_128_bits_of_entropy, get_mnemonic_words,
-    AddressType, Network,
+    get_public_key_hash_from_address, AddressType, Network,
 };
 
 const NETWORK: Network = Network::Mainnet;
@@ -140,4 +140,5 @@ fn main() {
     //     "0290a2e96ae8e35adfe1a465fcd2145a83b864893c53051101b759014e558c9f41".to_string(),
     // );
     // println!("fp: {}", fp);
+    get_public_key_hash_from_address(&"n22i3har2xwopMw3u6b2UTQ5TgBqJMjYMN".to_string());
 }
