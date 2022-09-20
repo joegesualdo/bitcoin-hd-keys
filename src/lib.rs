@@ -743,7 +743,7 @@ fn get_child_keys(
     children
 }
 
-fn get_wif_from_private_key(
+pub fn get_wif_from_private_key(
     private_key: &String,
     network: Network,
     should_compress: bool,
@@ -874,7 +874,7 @@ fn get_address_from_pub_key(
     network: Network,
     address_type: AddressType,
 ) -> String {
-    let pub_key_hash = get_public_key_hash(&pub_key);
+    let pub_key_hash = get_public_key_hash_from_public_key(&pub_key);
 
     let address = get_address_from_pub_key_hash(&pub_key_hash, network, address_type);
     return address;
@@ -958,7 +958,7 @@ fn get_public_key_from_private_key(private_key: &String, is_compressed: bool) ->
     };
     encode_hex(&public_key)
 }
-fn get_public_key_hash(public_key: &String) -> String {
+pub fn get_public_key_hash_from_public_key(public_key: &String) -> String {
     let hex_array = decode_hex(public_key).unwrap();
     let public_key_sha256 = sha256::digest_bytes(&hex_array);
     let public_key_sha256_as_hex_array = decode_hex(&public_key_sha256).unwrap();
@@ -1693,7 +1693,7 @@ impl HDWalletBip44 {
                 "{} {}     {}          {}",
                 key,
                 value.get_address(network, address_type),
-                get_public_key_hash(&public_key_hex),
+                get_public_key_hash_from_public_key(&public_key_hex),
                 value.get_wif(network, should_compress)
             )
         }
