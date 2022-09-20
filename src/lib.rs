@@ -1196,11 +1196,8 @@ pub fn get_public_key_hash_from_address(address: &String) -> String {
     // TODO: This should be exaustive and work for every address types
     // TODO: Implement taproot
     if bitcoin_address::is_legacy(address) || bitcoin_address::is_nested_segwit(address) {
-        println!("one");
         get_public_key_hash_from_non_bech_32_address(address)
     } else {
-        println!("two");
-        println!("{}", address);
         get_pubkey_hash_from_bech32_address(address)
     }
 }
