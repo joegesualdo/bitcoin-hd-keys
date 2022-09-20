@@ -864,6 +864,10 @@ fn get_bech_32_address_from_pubkey_hash(pub_key_hash: &String, network: Network)
     let address = witness_program.to_address();
     address
 }
+pub fn get_pubkey_hash_from_bech32_address(address: &String) -> String {
+    let witness = WitnessProgram::from_address(address).unwrap();
+    encode_hex(&witness.program())
+}
 
 fn get_address_from_pub_key(
     pub_key: &String,
@@ -1179,12 +1183,26 @@ fn get_derived_addresses_for_derivation_path(
     found_children_with_full_derivation_path_as_key
 }
 
-pub fn get_public_key_hash_from_address(address: &String) -> String {
+fn get_public_key_hash_from_non_bech_32_address(address: &String) -> String {
+    // This works for legacy and nested-segwit address, not native-segwit
+    // TODO: Addd all possibilities of types of address
     let address_base58check_decoded = from_check(&address).unwrap();
     let address_base58check_decoded_without_first_byte =
         address_base58check_decoded.get(1..).unwrap();
     let pub_key_hash = encode_hex(&address_base58check_decoded_without_first_byte);
     pub_key_hash
+}
+pub fn get_public_key_hash_from_address(address: &String) -> String {
+    // TODO: This should be exaustive and work for every address types
+    // TODO: Implement taproot
+    if bitcoin_address::is_legacy(address) || bitcoin_address::is_nested_segwit(address) {
+        println!("one");
+        get_public_key_hash_from_non_bech_32_address(address)
+    } else {
+        println!("two");
+        println!("{}", address);
+        get_pubkey_hash_from_bech32_address(address)
+    }
 }
 pub fn convert_wif_to_private_key(wif: &String) -> String {
     // Check: https://coinb.in/#verify
@@ -1807,9 +1825,10 @@ impl HDWalletBip49 {
                 Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
             };
             println!(
-                "{} {}     {}          {}",
+                "{} {}     {}    {}      {}",
                 key,
                 value.get_address(network, address_type),
+                get_public_key_hash_from_address(&value.get_address(network, address_type)),
                 public_key_hex,
                 value.get_wif(network, should_compress)
             )
