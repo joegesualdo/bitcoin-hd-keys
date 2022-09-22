@@ -958,7 +958,7 @@ fn get_public_key_from_private_key(private_key: &String, is_compressed: bool) ->
     };
     encode_hex(&public_key)
 }
-fn hash160(string_to_hash: &String) -> String {
+pub fn hash160(string_to_hash: &String) -> String {
     let hex_array = decode_hex(string_to_hash).unwrap();
     let sha256 = sha256::digest_bytes(&hex_array);
     let sha256_as_hex_array = decode_hex(&sha256).unwrap();
