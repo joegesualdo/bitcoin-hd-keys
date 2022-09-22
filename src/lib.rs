@@ -337,15 +337,22 @@ pub enum Bip {
     Bip49,
     Bip84,
 }
-pub fn create_fingerprint(public_key_hex: &String) -> String {
-    let hex_byte_array = decode_hex(&public_key_hex).unwrap();
+
+pub fn sha256(string_to_hash: &String) -> String {
+    let hex_byte_array = decode_hex(&string_to_hash).unwrap();
     let mut hasher = Sha256::new();
     // write input message
     hasher.update(&hex_byte_array);
     // read hash digest and consume hasher
     let sha256_result = hasher.finalize();
     let sha256_result_array = sha256_result.to_vec();
+    let hex_result = encode_hex(&sha256_result_array);
+    hex_result
+}
 
+pub fn create_fingerprint(public_key_hex: &String) -> String {
+    let sha256_result_hex = sha256(public_key_hex);
+    let sha256_result_array = decode_hex(&sha256_result_hex).unwrap();
     let ripemd160_result = ripemd160::Hash::hash(&sha256_result_array);
     let first_four_bytes = &ripemd160_result[..4];
     let first_four_hex = encode_hex(&first_four_bytes);
@@ -784,6 +791,19 @@ pub enum AddressType {
     Bech32,
 }
 
+pub fn get_p2sh_address_from_script_hash(script_hash: &String, network: Network) -> String {
+    // https://bitcoin.stackexchange.com/questions/111483/parsing-p2sh-address-from-output-script
+    let p2sh_version_application_byte = "05";
+    let p2sh_testnet_version_application_byte = "c4";
+    let version_byte = match network {
+        Network::Mainnet => decode_hex(p2sh_version_application_byte).unwrap(),
+        Network::Testnet => decode_hex(p2sh_testnet_version_application_byte).unwrap(),
+    };
+    let script_hash_bytes = decode_hex(&script_hash).unwrap();
+    let script_hash_with_version_byte = concat_u8(&version_byte, &script_hash_bytes);
+    let address = check_encode_slice(&script_hash_with_version_byte);
+    address
+}
 fn get_p2sh_address_from_pubkey_hash(public_key_hash: &String, network: Network) -> String {
     // https://bitcoin.stackexchange.com/questions/75910/how-to-generate-a-native-segwit-address-and-p2sh-segwit-address-from-a-standard
     let prefix_bytes = decode_hex("0014").unwrap();
@@ -793,16 +813,19 @@ fn get_p2sh_address_from_pubkey_hash(public_key_hash: &String, network: Network)
     let redeem_script_sha256_as_hex_array = decode_hex(&redeem_script_sha256).unwrap();
     let redeem_script_ripemd160 = ripemd160::Hash::hash(&redeem_script_sha256_as_hex_array);
     let hash160 = redeem_script_ripemd160.to_string();
-    let hash160_bytes = decode_hex(&hash160).unwrap();
-    let p2sh_version_application_byte = "05";
-    let p2sh_testnet_version_application_byte = "c4";
-    let version_byte = match network {
-        Network::Mainnet => decode_hex(p2sh_version_application_byte).unwrap(),
-        Network::Testnet => decode_hex(p2sh_testnet_version_application_byte).unwrap(),
-    };
-    let hash160_with_version_byte = concat_u8(&version_byte, &hash160_bytes);
-    let address = check_encode_slice(&hash160_with_version_byte);
-    address
+    return get_p2sh_address_from_script_hash(&hash160, network);
+    // Extracted this into get_p2sh_address_from_script_hash(script_hash: &String, network: Network) -> String {
+    // let hash160_bytes = decode_hex(&hash160).unwrap();
+    // let p2sh_version_application_byte = "05";
+    // let p2sh_testnet_version_application_byte = "c4";
+    // let version_byte = match network {
+    //     Network::Mainnet => decode_hex(p2sh_version_application_byte).unwrap(),
+    //     Network::Testnet => decode_hex(p2sh_testnet_version_application_byte).unwrap(),
+    // };
+    // let hash160_with_version_byte = concat_u8(&version_byte, &hash160_bytes);
+    // let address = check_encode_slice(&hash160_with_version_byte);
+    // println!("{:#?}", hash160_with_version_byte);
+    // address
 }
 fn get_p2pkh_address_from_pubkey_hash(public_key_hash: &String, network: Network) -> String {
     // SEE ALL VERSION APPLICATION CODES HERE: https://en.bitcoin.it/wiki/List_of_address_prefixes
@@ -830,7 +853,7 @@ fn get_p2pkh_address_from_pubkey_hash(public_key_hash: &String, network: Network
     let address = check_encode_slice(&a);
     address
 }
-fn get_address_from_pub_key_hash(
+pub fn get_address_from_pub_key_hash(
     public_key_hash: &String,
     network: Network,
     address_type: AddressType,
@@ -869,7 +892,7 @@ pub fn get_pubkey_hash_from_bech32_address(address: &String) -> String {
     encode_hex(&witness.program())
 }
 
-fn get_address_from_pub_key(
+pub fn get_address_from_pub_key(
     pub_key: &String,
     network: Network,
     address_type: AddressType,
@@ -960,8 +983,11 @@ fn get_public_key_from_private_key(private_key: &String, is_compressed: bool) ->
 }
 pub fn hash160(string_to_hash: &String) -> String {
     let hex_array = decode_hex(string_to_hash).unwrap();
+    let hex_array = string_to_hash.as_bytes();
     let sha256 = sha256::digest_bytes(&hex_array);
+    // let sha256 = "8e86cf114058d4e03924fe509fb60a48e976a01aa548fefdd65f8e88b325c4f1";
     let sha256_as_hex_array = decode_hex(&sha256).unwrap();
+    let sha256_as_hex_array = sha256.as_bytes();
     let ripemd160 = ripemd160::Hash::hash(&sha256_as_hex_array);
     ripemd160.to_string()
 }
@@ -1187,14 +1213,28 @@ fn get_derived_addresses_for_derivation_path(
     found_children_with_full_derivation_path_as_key
 }
 
-fn get_public_key_hash_from_non_bech_32_address(address: &String) -> String {
-    // This works for legacy and nested-segwit address, not native-segwit
-    // TODO: Addd all possibilities of types of address
-    let address_base58check_decoded = from_check(&address).unwrap();
-    let address_base58check_decoded_without_first_byte =
-        address_base58check_decoded.get(1..).unwrap();
-    let pub_key_hash = encode_hex(&address_base58check_decoded_without_first_byte);
-    pub_key_hash
+pub fn get_script_hash_from_p2sh_address(address: &str) -> String {
+    if bitcoin_address::is_p2sh(&address.to_string()) {
+        let address_base58check_decoded = from_check(&address).unwrap();
+        let address_base58check_decoded_without_first_byte =
+            address_base58check_decoded.get(1..).unwrap();
+        let script_hash = encode_hex(&address_base58check_decoded_without_first_byte);
+        script_hash
+    } else {
+        panic!("Address is not p2sh: {}", address);
+    }
+}
+
+pub fn get_public_key_hash_from_non_bech_32_address(address: &String) -> String {
+    if bitcoin_address::is_legacy(&address.to_string()) {
+        let address_base58check_decoded = from_check(&address).unwrap();
+        let address_base58check_decoded_without_first_byte =
+            address_base58check_decoded.get(1..).unwrap();
+        let pub_key_hash = encode_hex(&address_base58check_decoded_without_first_byte);
+        pub_key_hash
+    } else {
+        panic!("Address must be legacy: {}", address);
+    }
 }
 pub fn get_public_key_hash_from_address(address: &String) -> String {
     // TODO: This should be exaustive and work for every address types
@@ -1840,10 +1880,10 @@ impl HDWalletBip49 {
             };
             let address = value.get_address(network, address_type);
             println!(
-                "{} {}  {}   {}    {}      {}",
+                "{} {}  {}   {}      {}",
                 key,
                 address,
-                get_public_key_hash_from_address(&address),
+                //get_public_key_hash_from_address(&address),
                 get_public_key_hash_from_public_key(&public_key_hex),
                 public_key_hex,
                 value.get_wif(network, should_compress)

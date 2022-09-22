@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use bitcoin_hd_keys::{
     create_fingerprint, generate_bip32_hd_wallet_from_mnemonic_words,
     generate_bip44_hd_wallet_from_mnemonic_words, generate_bip49_hd_wallet_from_mnemonic_words,
-    generate_bip84_hd_wallet_from_mnemonic_words, get_128_bits_of_entropy, get_mnemonic_words,
-    get_pubkey_hash_from_bech32_address, get_public_key_hash_from_address,
-    get_wif_from_private_key, AddressType, Network,
+    generate_bip84_hd_wallet_from_mnemonic_words, get_128_bits_of_entropy,
+    get_address_from_pub_key, get_address_from_pub_key_hash, get_mnemonic_words,
+    get_p2sh_address_from_script_hash, get_pubkey_hash_from_bech32_address,
+    get_public_key_hash_from_address, get_public_key_hash_from_non_bech_32_address,
+    get_script_hash_from_p2sh_address, get_wif_from_private_key, hash160, sha256, AddressType,
+    Network,
 };
 
 const NETWORK: Network = Network::Mainnet;
@@ -143,6 +146,24 @@ fn main() {
     // println!("fp: {}", fp);
     //
     //
-    let wif = get_public_key_hash_from_address(&"2MuvJWP5uKxXLgUyTaTxjzSbDY6sR3H9jME".to_string());
-    println!("{}", wif);
+    println!(
+        "{}",
+        hash160(&"615e57fbd17a5dc62c08a782d99b948887c01e18".to_string())
+    );
+
+    println!(
+        "{}",
+        hash160(&sha256(&"30440220462e3c6c2a20a9c1587fa3207a3b4bd0cc12aceb8aae042c1649361fd197663902200877a8f0ee8ebfd7e3720d7c36e3298f0fdd8c48df66576b1cea786a99f9fab201210213fd52323c795f295fbe61254080ac4f973d27d2622f3e89b3fc53a58d528200".to_string())),
+    );
+    println!(
+        "{}",
+        hash160(&"30440220462e3c6c2a20a9c1587fa3207a3b4bd0cc12aceb8aae042c1649361fd197663902200877a8f0ee8ebfd7e3720d7c36e3298f0fdd8c48df66576b1cea786a99f9fab2010213fd52323c795f295fbe61254080ac4f973d27d2622f3e89b3fc53a58d528200".to_string())
+    );
+    println!(
+        "{}",
+        &get_p2sh_address_from_script_hash(
+            &get_script_hash_from_p2sh_address("2MuvJWP5uKxXLgUyTaTxjzSbDY6sR3H9jME"),
+            Network::Testnet
+        )
+    );
 }
