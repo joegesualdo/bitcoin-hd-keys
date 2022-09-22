@@ -981,19 +981,24 @@ fn get_public_key_from_private_key(private_key: &String, is_compressed: bool) ->
     };
     encode_hex(&public_key)
 }
-pub fn hash160(string_to_hash: &String) -> String {
-    let hex_array = decode_hex(string_to_hash).unwrap();
-    let hex_array = string_to_hash.as_bytes();
+
+fn hash160_for_non_hex(non_hex_string_to_hash: &String) -> String {
+    let hex_array = non_hex_string_to_hash.as_bytes();
     let sha256 = sha256::digest_bytes(&hex_array);
-    // let sha256 = "8e86cf114058d4e03924fe509fb60a48e976a01aa548fefdd65f8e88b325c4f1";
-    let sha256_as_hex_array = decode_hex(&sha256).unwrap();
     let sha256_as_hex_array = sha256.as_bytes();
     let ripemd160 = ripemd160::Hash::hash(&sha256_as_hex_array);
     ripemd160.to_string()
 }
+pub fn hash160_for_hex(hex_to_hash: &String) -> String {
+    let hex_array = decode_hex(hex_to_hash).unwrap();
+    let sha256 = sha256::digest_bytes(&hex_array);
+    let sha256_as_hex_array = decode_hex(&sha256).unwrap();
+    let public_key_ripemd160 = ripemd160::Hash::hash(&sha256_as_hex_array);
+    public_key_ripemd160.to_string()
+}
 
 pub fn get_public_key_hash_from_public_key(public_key: &String) -> String {
-    hash160(public_key)
+    hash160_for_hex(public_key)
 }
 
 fn get_depth_from_derivation_path(derivation_path: &String) -> u8 {
@@ -1245,7 +1250,7 @@ pub fn get_public_key_hash_from_address(address: &String) -> String {
         get_pubkey_hash_from_bech32_address(address)
     } else if bitcoin_address::is_nested_segwit(address) {
         panic!(
-            "Couldn't get public key hash from address. Nested segwit addresses not supported: {}",
+            "Couldn't get public key hash from address ({}). Nested segwit addresses not supported. Instead, you should use get_script_hash_from_p2sh_address() function",
             address
         );
     } else {
