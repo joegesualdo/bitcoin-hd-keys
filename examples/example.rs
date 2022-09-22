@@ -7,8 +7,8 @@ use bitcoin_hd_keys::{
     get_address_from_pub_key, get_address_from_pub_key_hash, get_mnemonic_words,
     get_p2sh_address_from_script_hash, get_pubkey_hash_from_bech32_address,
     get_public_key_hash_from_address, get_public_key_hash_from_non_bech_32_address,
-    get_script_hash_from_p2sh_address, get_wif_from_private_key, hash160_for_hex,
-    hash160_for_non_hex, sha256, AddressType, Network,
+    get_script_hash_from_p2sh_address, get_wif_from_private_key, hash160_for_hex, AddressType,
+    Network,
 };
 
 const NETWORK: Network = Network::Mainnet;
@@ -166,10 +166,10 @@ fn main() {
     //         Network::Testnet
     //     )
     // );
-    println!(
-        "{}",
-        hash160_for_non_hex(&"0014615e57fbd17a5dc62c08a782d99b948887c01e18".to_string())
-    );
+    //println!(
+    //    "{}",
+    //    hash160_for_non_hex(&"0014615e57fbd17a5dc62c08a782d99b948887c01e18".to_string())
+    //);
     println!("");
     println!(
         "{}",

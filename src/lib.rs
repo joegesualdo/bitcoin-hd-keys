@@ -338,8 +338,8 @@ pub enum Bip {
     Bip84,
 }
 
-pub fn sha256(string_to_hash: &String) -> String {
-    let hex_byte_array = decode_hex(&string_to_hash).unwrap();
+pub fn sha256_hex(hex_to_hash: &String) -> String {
+    let hex_byte_array = decode_hex(&hex_to_hash).unwrap();
     let mut hasher = Sha256::new();
     // write input message
     hasher.update(&hex_byte_array);
@@ -351,7 +351,7 @@ pub fn sha256(string_to_hash: &String) -> String {
 }
 
 pub fn create_fingerprint(public_key_hex: &String) -> String {
-    let sha256_result_hex = sha256(public_key_hex);
+    let sha256_result_hex = sha256_hex(public_key_hex);
     let sha256_result_array = decode_hex(&sha256_result_hex).unwrap();
     let ripemd160_result = ripemd160::Hash::hash(&sha256_result_array);
     let first_four_bytes = &ripemd160_result[..4];
@@ -983,15 +983,15 @@ fn get_public_key_from_private_key(private_key: &String, is_compressed: bool) ->
 }
 
 fn hash160_for_non_hex(non_hex_string_to_hash: &String) -> String {
-    let hex_array = non_hex_string_to_hash.as_bytes();
-    let sha256 = sha256::digest_bytes(&hex_array);
+    let string_as_array = non_hex_string_to_hash.as_bytes();
+    let sha256 = sha256::digest_bytes(&string_as_array);
     let sha256_as_hex_array = sha256.as_bytes();
     let ripemd160 = ripemd160::Hash::hash(&sha256_as_hex_array);
     ripemd160.to_string()
 }
 pub fn hash160_for_hex(hex_to_hash: &String) -> String {
     let hex_array = decode_hex(hex_to_hash).unwrap();
-    let sha256 = sha256::digest_bytes(&hex_array);
+    let sha256 = sha256_hex(hex_to_hash);
     let sha256_as_hex_array = decode_hex(&sha256).unwrap();
     let public_key_ripemd160 = ripemd160::Hash::hash(&sha256_as_hex_array);
     public_key_ripemd160.to_string()
