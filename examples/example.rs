@@ -143,10 +143,6 @@ fn main() {
     // println!("fp: {}", fp);
     //
     //
-    let wif = get_wif_from_private_key(
-        &"DBFF11E0F2F1AA5089465A591C5E523D1CA92668DED893155CDFABC94CC14E30".to_string(),
-        Network::Testnet,
-        true,
-    );
+    let wif = get_public_key_hash_from_address(&"2MuvJWP5uKxXLgUyTaTxjzSbDY6sR3H9jME".to_string());
     println!("{}", wif);
 }

@@ -1199,10 +1199,17 @@ fn get_public_key_hash_from_non_bech_32_address(address: &String) -> String {
 pub fn get_public_key_hash_from_address(address: &String) -> String {
     // TODO: This should be exaustive and work for every address types
     // TODO: Implement taproot
-    if bitcoin_address::is_legacy(address) || bitcoin_address::is_nested_segwit(address) {
+    if bitcoin_address::is_legacy(address) {
         get_public_key_hash_from_non_bech_32_address(address)
-    } else {
+    } else if bitcoin_address::is_segwit_native(address) {
         get_pubkey_hash_from_bech32_address(address)
+    } else if bitcoin_address::is_nested_segwit(address) {
+        panic!(
+            "Couldn't get public key hash from address. Nested segwit addresses not supported: {}",
+            address
+        );
+    } else {
+        panic!("Couldn't get public key hash from address: {}", address);
     }
 }
 pub fn convert_wif_to_private_key(wif: &String) -> String {
@@ -1590,10 +1597,13 @@ impl HDWalletBip32 {
                 Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
                 Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
             };
+            let address = value.get_address(network, address_type);
             println!(
-                "{} {}     {}          {}",
+                "{} {}  {}   {}    {}      {}",
                 key,
-                value.get_address(network, address_type),
+                address,
+                get_public_key_hash_from_address(&address),
+                get_public_key_hash_from_public_key(&public_key_hex),
                 public_key_hex,
                 value.get_wif(network, should_compress)
             )
@@ -1693,11 +1703,14 @@ impl HDWalletBip44 {
                 Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
                 Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
             };
+            let address = value.get_address(network, address_type);
             println!(
-                "{} {}     {}          {}",
+                "{} {}  {}   {}    {}      {}",
                 key,
-                value.get_address(network, address_type),
+                address,
+                get_public_key_hash_from_address(&address),
                 get_public_key_hash_from_public_key(&public_key_hex),
+                public_key_hex,
                 value.get_wif(network, should_compress)
             )
         }
@@ -1825,11 +1838,13 @@ impl HDWalletBip49 {
                 Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
                 Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
             };
+            let address = value.get_address(network, address_type);
             println!(
-                "{} {}     {}    {}      {}",
+                "{} {}  {}   {}    {}      {}",
                 key,
-                value.get_address(network, address_type),
-                get_public_key_hash_from_address(&value.get_address(network, address_type)),
+                address,
+                get_public_key_hash_from_address(&address),
+                get_public_key_hash_from_public_key(&public_key_hex),
                 public_key_hex,
                 value.get_wif(network, should_compress)
             )
@@ -1958,10 +1973,13 @@ impl HDWalletBip84 {
                 Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
                 Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
             };
+            let address = value.get_address(network, address_type);
             println!(
-                "{} {}     {}          {}",
+                "{} {}  {}   {}    {}      {}",
                 key,
-                value.get_address(network, address_type),
+                address,
+                get_public_key_hash_from_address(&address),
+                get_public_key_hash_from_public_key(&public_key_hex),
                 public_key_hex,
                 value.get_wif(network, should_compress)
             )
