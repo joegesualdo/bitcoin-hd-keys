@@ -958,12 +958,16 @@ fn get_public_key_from_private_key(private_key: &String, is_compressed: bool) ->
     };
     encode_hex(&public_key)
 }
+fn hash160(string_to_hash: &String) -> String {
+    let hex_array = decode_hex(string_to_hash).unwrap();
+    let sha256 = sha256::digest_bytes(&hex_array);
+    let sha256_as_hex_array = decode_hex(&sha256).unwrap();
+    let ripemd160 = ripemd160::Hash::hash(&sha256_as_hex_array);
+    ripemd160.to_string()
+}
+
 pub fn get_public_key_hash_from_public_key(public_key: &String) -> String {
-    let hex_array = decode_hex(public_key).unwrap();
-    let public_key_sha256 = sha256::digest_bytes(&hex_array);
-    let public_key_sha256_as_hex_array = decode_hex(&public_key_sha256).unwrap();
-    let public_key_ripemd160 = ripemd160::Hash::hash(&public_key_sha256_as_hex_array);
-    public_key_ripemd160.to_string()
+    hash160(public_key)
 }
 
 fn get_depth_from_derivation_path(derivation_path: &String) -> u8 {
