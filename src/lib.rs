@@ -359,8 +359,8 @@ pub fn create_fingerprint(public_key_hex: &String) -> String {
     first_four_hex
 }
 
-pub fn double_sha256(hex: &String) -> String {
-    let hex_byte_array = decode_hex(&hex).unwrap();
+pub fn double_sha256_hex(hex_to_hash: &String) -> String {
+    let hex_byte_array = decode_hex(&hex_to_hash).unwrap();
     let mut hasher = Sha256::new();
     // write input message
     hasher.update(&hex_byte_array);
@@ -389,7 +389,7 @@ fn serialize_key(args: SerializeKeyArgs) -> String {
     } = args;
 
     fn checksum(hex: &String) -> String {
-        let hash = double_sha256(&hex);
+        let hash = double_sha256_hex(&hex);
         let hash_byte_array = decode_hex(&hash).unwrap();
         let first_four_bytes = &hash_byte_array[0..=3];
         encode_hex(first_four_bytes)
