@@ -903,7 +903,7 @@ pub fn get_address_from_pub_key(
     return address;
 }
 
-fn get_public_key_from_wif(wif: &String) -> String {
+pub fn get_public_key_from_wif(wif: &String) -> String {
     // Check: https://coinb.in/#verify
     let private_key = convert_wif_to_private_key(&wif);
     let public_key = get_public_key_from_private_key(&private_key, is_wif_compressed(&wif));
