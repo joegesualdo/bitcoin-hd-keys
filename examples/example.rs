@@ -82,7 +82,7 @@ fn main() {
         None,
         1,
         0,
-        30,
+        50,
         false,
         Network::Testnet,
     );
