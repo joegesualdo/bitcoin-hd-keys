@@ -502,7 +502,6 @@ fn serialize_key(args: SerializeKeyArgs) -> String {
 fn get_child_extended_public_key(
     parent_chain_code: &[u8],
     parent_public_key: &String,
-    parent_private_key: &[u8],
     child_index: i32,
 ) -> (String, String) {
     let parent_chain_code = parent_chain_code;
@@ -517,12 +516,12 @@ fn get_child_extended_public_key(
     let h = HMAC::mac(parent_public_key_with_index_as_bytes, key);
     let left = &h[0..=31];
     let right = &h[32..];
-    let sk = secp256k1::SecretKey::from_slice(left).expect("statistically impossible to hit");
-    let parent_private_secret_key = SecretKey::from_str(&encode_hex(parent_private_key)).unwrap();
+    // let sk = secp256k1::SecretKey::from_slice(left).expect("statistically impossible to hit");
+    // let parent_private_secret_key = SecretKey::from_str(&encode_hex(parent_private_key)).unwrap();
 
-    let tweaked = sk
-        .add_tweak(&parent_private_secret_key.into())
-        .expect("statistically impossible to hit");
+    // let tweaked = sk
+    //     .add_tweak(&parent_private_secret_key.into())
+    //     .expect("statistically impossible to hit");
 
     // Source: "ckd_pub" function here: https://github.com/rust-bitcoin/rust-bitcoin/blob/master/src/util/bip32.rs
     let secp = Secp256k1::new();
