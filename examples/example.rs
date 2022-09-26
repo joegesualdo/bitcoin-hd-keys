@@ -3,11 +3,12 @@ use std::collections::HashMap;
 use bitcoin_hd_keys::{
     create_fingerprint, generate_bip32_hd_wallet_from_mnemonic_words,
     generate_bip44_hd_wallet_from_mnemonic_words, generate_bip49_hd_wallet_from_mnemonic_words,
-    generate_bip84_hd_wallet_from_mnemonic_words, get_128_bits_of_entropy,
-    get_address_from_pub_key, get_address_from_pub_key_hash, get_bech_32_address_from_pubkey_hash,
-    get_mnemonic_words, get_p2sh_address_from_script_hash, get_pubkey_hash_from_bech32_address,
-    get_public_key_hash_from_address, get_public_key_hash_from_non_bech_32_address,
-    get_script_hash_from_p2sh_address, get_wif_from_private_key, hash160_for_hex, AddressType,
+    generate_bip84_hd_wallet_from_mnemonic_words, generate_bip86_hd_wallet_from_mnemonic_words,
+    get_128_bits_of_entropy, get_address_from_pub_key, get_address_from_pub_key_hash,
+    get_bech_32_address_from_pubkey_hash, get_mnemonic_words, get_p2sh_address_from_script_hash,
+    get_pubkey_hash_from_bech32_address, get_public_key_hash_from_address,
+    get_public_key_hash_from_non_bech_32_address, get_script_hash_from_p2sh_address,
+    get_taproot_address_from_pubkey, get_wif_from_private_key, hash160_for_hex, AddressType,
     Network,
 };
 
@@ -155,17 +156,17 @@ fn main() {
         "pulp".to_string(),
         "garage".to_string(),
     ];
-    // let sparrow_bip84_hd_wallet = generate_bip84_hd_wallet_from_mnemonic_words(
-    //     sparrow_p2wpkh_wallet_mnemonic_words,
-    //     None,
-    //     1,
-    //     0,
-    //     5,
-    //     false,
-    //     Network::Testnet,
-    // );
-    // println!("{:#?}", sparrow_bip84_hd_wallet);
-    // sparrow_bip84_hd_wallet.pretty_print_derived_addressed(Network::Testnet);
+    let sparrow_bip86_hd_wallet = generate_bip86_hd_wallet_from_mnemonic_words(
+        sparrow_taproot_wallet_mnemonic_words,
+        None,
+        1,
+        0,
+        5,
+        false,
+        Network::Testnet,
+    );
+    println!("{:#?}", sparrow_bip86_hd_wallet);
+    sparrow_bip86_hd_wallet.pretty_print_derived_addressed(Network::Testnet);
     // let fp = create_fingerprint(
     //     "0290a2e96ae8e35adfe1a465fcd2145a83b864893c53051101b759014e558c9f41".to_string(),
     // );
@@ -199,10 +200,9 @@ fn main() {
     println!("");
     println!(
         "{}",
-        get_bech_32_address_from_pubkey_hash(
+        get_taproot_address_from_pubkey(
             &"03b1bf1c41b4c03d5e43129bd64b8cf8d590c95226e6d62c03231df598bd927029".to_string(),
             Network::Testnet,
-            true
         )
     );
 }

@@ -6,14 +6,16 @@ mod bip39;
 
 use bip39::WORDS;
 use bitcoin::hashes::{ripemd160, Hash};
+use bitcoin::schnorr::UntweakedPublicKey;
 use bitcoin::util::base58::check_encode_slice;
 use bitcoin::util::base58::from_check;
+use bitcoin::util::taproot::TapTweakHash;
 use bitcoin_bech32::{u5, WitnessProgram};
 use hmac_sha512::HMAC;
 use num_bigint::BigUint;
 use rand::{thread_rng, RngCore};
 use ring::{digest, pbkdf2};
-use secp256k1::{Secp256k1, SecretKey};
+use secp256k1::{Scalar, Secp256k1, SecretKey};
 use sha2::{Digest, Sha256};
 
 // TODO: Maybe also incorporate 'h' in addition to '
@@ -336,6 +338,7 @@ pub enum Bip {
     Bip44,
     Bip49,
     Bip84,
+    Bip86,
 }
 
 pub fn sha256_hex(hex_to_hash: &String) -> String {
@@ -446,7 +449,7 @@ fn serialize_key(args: SerializeKeyArgs) -> String {
                 }
             }
         }
-        Bip::Bip84 => {
+        Bip::Bip84 | Bip::Bip86 => {
             // Source: https://github.com/bitcoin/bips/blob/master/bip-0084.mediawiki
             if is_public {
                 match network {
@@ -863,39 +866,70 @@ pub fn get_address_from_pub_key_hash(
     match address_type {
         AddressType::P2PKH => get_p2pkh_address_from_pubkey_hash(public_key_hash, network),
         AddressType::P2SH => get_p2sh_address_from_pubkey_hash(public_key_hash, network),
-        AddressType::Bech32 => {
-            get_bech_32_address_from_pubkey_hash(public_key_hash, network, false)
-        }
+        AddressType::Bech32 => get_bech_32_address_from_pubkey_hash(public_key_hash, network),
         AddressType::Taproot => {
             todo!("Need to implement functionality to get taproot address from public key")
         }
     }
 }
 
-pub fn get_bech_32_address_from_pubkey_hash(
-    pub_key_hash: &String,
+fn get_bech32_address_from_witness_program(
+    witness_version: u8,
+    program_hex: &String,
     network: Network,
-    should_get_taproot_address: bool,
 ) -> String {
-    // Helpful to check: https://slowli.github.io/bech32-buffer/
-    // Current version is 00
-    // Source: https://en.bitcoin.it/wiki/Bech32
-    let witness_version = if should_get_taproot_address { 1 } else { 0 };
-    let byte_array = decode_hex(&pub_key_hash).unwrap();
-    // TODO: Implement the conversion from public_key to bech32 myself
-    // We're using an external library
     let network_for_bech32_library = match network {
         Network::Mainnet => bitcoin_bech32::constants::Network::Bitcoin,
         Network::Testnet => bitcoin_bech32::constants::Network::Testnet,
     };
+    let byte_array = decode_hex(&program_hex).unwrap();
     let witness_program = WitnessProgram::new(
         u5::try_from_u8(witness_version).unwrap(),
         byte_array,
         network_for_bech32_library,
     )
     .unwrap();
-
     let address = witness_program.to_address();
+    address
+}
+
+pub fn get_taproot_address_from_pubkey(public_key_hex: &String, network: Network) -> String {
+    // Helpful to check: https://slowli.github.io/bech32-buffer/
+    // Current version is 00
+    // Source: https://en.bitcoin.it/wiki/Bech32
+    // Source: https://www.youtube.com/watch?v=YGAeMnN4O_k&t=631s
+    //
+    let witness_version = 1;
+    let secp = Secp256k1::new();
+    let public_key =
+        secp256k1::PublicKey::from_str(&public_key_hex).expect("statistically impossible to hit");
+    let (untweaked_x_only_public_key, _parity) = public_key.x_only_public_key();
+    let merkle_root = None;
+    let tweak =
+        TapTweakHash::from_key_and_tweak(untweaked_x_only_public_key, merkle_root).to_scalar();
+    let (tweaked_x_only_public_key, _parity) = untweaked_x_only_public_key
+        .add_tweak(&secp, &tweak)
+        .expect("Tap tweak failed");
+    let address = get_bech32_address_from_witness_program(
+        witness_version,
+        &tweaked_x_only_public_key.to_string(),
+        network,
+    );
+    address
+}
+
+pub fn get_bech_32_address_from_pubkey_hash(pub_key_hash: &String, network: Network) -> String {
+    // Helpful to check: https://slowli.github.io/bech32-buffer/
+    // Current version is 00
+    // Source: https://en.bitcoin.it/wiki/Bech32
+    let witness_version = 0;
+    // TODO: Implement the conversion from public_key to bech32 myself
+    // We're using an external library
+    let address = get_bech32_address_from_witness_program(
+        witness_version,
+        &pub_key_hash.to_string(),
+        network,
+    );
     address
 }
 pub fn get_pubkey_hash_from_bech32_address(address: &String) -> String {
@@ -908,10 +942,15 @@ pub fn get_address_from_pub_key(
     network: Network,
     address_type: AddressType,
 ) -> String {
-    let pub_key_hash = get_public_key_hash_from_public_key(&pub_key);
+    match address_type {
+        AddressType::P2PKH | AddressType::P2SH | AddressType::Bech32 => {
+            let pub_key_hash = get_public_key_hash_from_public_key(&pub_key);
 
-    let address = get_address_from_pub_key_hash(&pub_key_hash, network, address_type);
-    return address;
+            let address = get_address_from_pub_key_hash(&pub_key_hash, network, address_type);
+            address
+        }
+        AddressType::Taproot => get_taproot_address_from_pubkey(pub_key, network),
+    }
 }
 
 pub fn get_public_key_from_wif(wif: &String) -> String {
@@ -1551,6 +1590,30 @@ fn get_bip84_derived_addresses(
         should_harden,
     )
 }
+// TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
+// private/public keys. See BIP49 section of: https://iancoleman.io/bip39/
+fn get_bip86_derived_addresses(
+    coin_type: i32,
+    account: i32,
+    should_include_change_addresses: bool,
+    master_keys: &MasterKeys,
+    children_count: i32,
+    should_harden: bool,
+) -> HashMap<String, Keys> {
+    // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
+    // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
+    // internal chain is also known as a change address
+    let purpose = 86;
+    get_derived_addresses_from_5_levels(
+        purpose,
+        coin_type,
+        account,
+        should_include_change_addresses,
+        master_keys,
+        children_count,
+        should_harden,
+    )
+}
 
 #[derive(Debug)]
 struct Bip44DerivationPathInfo {
@@ -1623,6 +1686,31 @@ fn get_bip84_derivation_path_info(
     );
 
     Bip84DerivationPathInfo {
+        account_extended_private_key: bip32_extended_keys_for_account.xpriv,
+        account_extended_public_key: bip32_extended_keys_for_account.xpub,
+    }
+}
+#[derive(Debug)]
+struct Bip86DerivationPathInfo {
+    account_extended_private_key: String,
+    account_extended_public_key: String,
+}
+fn get_bip86_derivation_path_info(
+    coin_type: i32,
+    account: i32,
+    master_keys: &MasterKeys,
+    network: Network,
+) -> Bip86DerivationPathInfo {
+    let purpose = 86;
+    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, coin_type, account);
+    let bip32_extended_keys_for_account = get_bip32_extended_keys_from_derivation_path(
+        &account_derivation_path.to_string(),
+        &Keys::Master(master_keys.clone()),
+        network,
+        Bip::Bip84,
+    );
+
+    Bip86DerivationPathInfo {
         account_extended_private_key: bip32_extended_keys_for_account.xpriv,
         account_extended_public_key: bip32_extended_keys_for_account.xpub,
     }
@@ -2122,6 +2210,140 @@ pub fn generate_bip84_hd_wallet_from_mnemonic_words(
         account_derivation_path,
         account_extended_private_key: bip84_derivation_path_info.account_extended_private_key,
         account_extended_public_key: bip84_derivation_path_info.account_extended_public_key,
+        derivation_path_external,
+        bip32_extended_private_key_for_external,
+        bip32_extended_public_key_for_external,
+        derivation_path_internal,
+        bip32_extended_private_key_for_internal,
+        bip32_extended_public_key_for_internal,
+        derived_addresses: found_children,
+    }
+}
+#[derive(Debug)]
+pub struct HDWalletBip86 {
+    network: Network,
+    bip39_seed: String,
+    master_keys: MasterKeys,
+    bip32_root_key: String,
+    bip32_root_pub_key: String,
+    master_fingerprint: String,
+    purpose: i32,
+    coin_type: i32,
+    account: i32,
+    // internal: bool,
+    account_derivation_path: String,
+    account_extended_private_key: String,
+    account_extended_public_key: String,
+    derivation_path_external: String,
+    bip32_extended_private_key_for_external: String,
+    bip32_extended_public_key_for_external: String,
+    derivation_path_internal: String,
+    bip32_extended_private_key_for_internal: String,
+    bip32_extended_public_key_for_internal: String,
+    derived_addresses: HashMap<String, Keys>,
+}
+impl HDWalletBip86 {
+    pub fn pretty_print_derived_addressed(&self, network: Network) -> () {
+        let address_type = AddressType::Taproot;
+        for (key, value) in self.derived_addresses.clone() {
+            let should_compress = true;
+            let public_key_hex = match &value {
+                Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
+                Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
+            };
+            let address = value.get_address(network, address_type);
+            println!(
+                "{} {}  {}    {}      {}",
+                key,
+                address,
+                // get_public_key_hash_from_address(&address),
+                get_public_key_hash_from_public_key(&public_key_hex),
+                public_key_hex,
+                value.get_wif(network, should_compress)
+            )
+        }
+    }
+}
+pub fn generate_bip86_hd_wallet_from_mnemonic_words(
+    mnemonic_words: Vec<String>,
+    password: Option<String>,
+    coin_type: i32,
+    account: i32,
+    children_count: i32,
+    should_harden: bool,
+    network: Network,
+) -> HDWalletBip86 {
+    let bip = Bip::Bip86;
+    let purpose = 86;
+
+    let passphrase = match password {
+        Some(password) => password,
+        None => "".to_string(),
+    };
+    let bip39_seed = get_bip38_512_bit_private_key(mnemonic_words, Some(passphrase));
+    let bip32_root_key = get_bip32_root_key_from_seed(&bip39_seed, network, bip);
+    // Notice we have two ways to get the master keys: -------------------------
+    // 1) using seed
+    let master_keys_generated_from_seed = get_master_keys_from_seed(&bip39_seed);
+    // 2) using bip32 root key (extended private master key)
+    let master_keys_generated_from_bip32_root_key =
+        get_master_keys_from_bip32_root_key(&bip32_root_key);
+    let master_keys = master_keys_generated_from_seed;
+    // ---------------------------------------------------------------------------
+    // Can also get bip32 root key from masterkeys;
+    let bip32_root_key = get_bip32_root_key_from_master_keys(&master_keys, network, bip);
+    //
+    let serialized_extended_master_keys = master_keys.serialize(network, bip);
+    let master_fingerprint = create_fingerprint(&master_keys.public_key_hex);
+
+    let bip32_root_pub_key = serialized_extended_master_keys.xpub;
+    let account_derivation_path = format!("m/{}'/{}'/{}'", purpose, coin_type, account);
+    let derivation_path_external = format!("{}/0", account_derivation_path);
+    let bip32_extended_keys_for_external = get_bip32_extended_keys_from_derivation_path(
+        &derivation_path_external,
+        &Keys::Master(master_keys.clone()),
+        network,
+        bip,
+    );
+    let bip32_extended_private_key_for_external = bip32_extended_keys_for_external.xpriv;
+    let bip32_extended_public_key_for_external = bip32_extended_keys_for_external.xpub;
+    // Change
+    let derivation_path_internal = format!("{}/1", account_derivation_path);
+    let bip32_extended_keys_for_internal = get_bip32_extended_keys_from_derivation_path(
+        &derivation_path_internal,
+        &Keys::Master(master_keys.clone()),
+        network,
+        bip,
+    );
+    let bip32_extended_private_key_for_internal = bip32_extended_keys_for_internal.xpriv;
+    let bip32_extended_public_key_for_internal = bip32_extended_keys_for_internal.xpub;
+
+    let should_include_change_addresses = true;
+    let found_children = get_bip86_derived_addresses(
+        coin_type,
+        account,
+        should_include_change_addresses,
+        &master_keys,
+        children_count,
+        should_harden,
+    );
+    let bip86_derivation_path_info =
+        get_bip86_derivation_path_info(coin_type, account, &master_keys.clone(), network);
+
+    HDWalletBip86 {
+        network,
+        bip39_seed,
+        master_keys,
+        bip32_root_key,
+        bip32_root_pub_key,
+        master_fingerprint,
+        purpose,
+        coin_type,
+        account,
+        // internal: bool,
+        account_derivation_path,
+        account_extended_private_key: bip86_derivation_path_info.account_extended_private_key,
+        account_extended_public_key: bip86_derivation_path_info.account_extended_public_key,
         derivation_path_external,
         bip32_extended_private_key_for_external,
         bip32_extended_public_key_for_external,
