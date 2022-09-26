@@ -108,7 +108,7 @@ fn main() {
         None,
         1,
         0,
-        5,
+        10,
         false,
         Network::Testnet,
     );
@@ -131,6 +131,32 @@ fn main() {
     ];
     let sparrow_bip84_hd_wallet = generate_bip84_hd_wallet_from_mnemonic_words(
         sparrow_p2wpkh_wallet_mnemonic_words,
+        None,
+        1,
+        0,
+        5,
+        false,
+        Network::Testnet,
+    );
+    println!("{:#?}", sparrow_bip84_hd_wallet);
+    sparrow_bip84_hd_wallet.pretty_print_derived_addressed(Network::Testnet);
+
+    let sparrow_taproot_wallet_mnemonic_words = vec![
+        "expose".to_string(),
+        "fetch".to_string(),
+        "define".to_string(),
+        "fossil".to_string(),
+        "cool".to_string(),
+        "gentle".to_string(),
+        "liberty".to_string(),
+        "dog".to_string(),
+        "tone".to_string(),
+        "angle".to_string(),
+        "pulp".to_string(),
+        "garage".to_string(),
+    ];
+    let sparrow_bip84_hd_wallet = generate_bip84_hd_wallet_from_mnemonic_words(
+        sparrow_taproot_wallet_mnemonic_words,
         None,
         1,
         0,
