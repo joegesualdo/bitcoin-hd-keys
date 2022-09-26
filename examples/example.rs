@@ -1,19 +1,21 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
+use bitcoin::util::taproot::TapTweakHash;
 use bitcoin_hd_keys::{
     create_fingerprint, generate_bip32_hd_wallet_from_mnemonic_words,
     generate_bip44_hd_wallet_from_mnemonic_words, generate_bip49_hd_wallet_from_mnemonic_words,
     generate_bip84_hd_wallet_from_mnemonic_words, generate_bip86_hd_wallet_from_mnemonic_words,
     get_128_bits_of_entropy, get_address_from_pub_key, get_address_from_pub_key_hash,
-    get_bech_32_address_from_pubkey_hash, get_mnemonic_words, get_p2sh_address_from_script_hash,
-    get_pubkey_hash_from_bech32_address, get_public_key_hash_from_address,
-    get_public_key_hash_from_non_bech_32_address, get_script_hash_from_p2sh_address,
-    get_taproot_address_from_pubkey, get_wif_from_private_key, hash160_for_hex, AddressType,
+    get_mnemonic_words, get_p2sh_address_from_script_hash, get_p2tr_address_from_pubkey,
+    get_p2wpkh_address_from_pubkey_hash, get_pubkey_hash_from_bech32_address,
+    get_public_key_hash_from_address, get_public_key_hash_from_non_bech_32_address,
+    get_script_hash_from_p2sh_address, get_wif_from_private_key, hash160_for_hex, AddressType,
     Network,
 };
+use secp256k1::Secp256k1;
 
 const NETWORK: Network = Network::Mainnet;
-const ADDRESS_TYPE: AddressType = AddressType::Bech32;
+const ADDRESS_TYPE: AddressType = AddressType::P2WPKH;
 
 fn main() {
     let entropy_array = get_128_bits_of_entropy();
@@ -198,11 +200,23 @@ fn main() {
     //    hash160_for_non_hex(&"0014615e57fbd17a5dc62c08a782d99b948887c01e18".to_string())
     //);
     println!("");
-    println!(
-        "{}",
-        get_taproot_address_from_pubkey(
-            &"03b1bf1c41b4c03d5e43129bd64b8cf8d590c95226e6d62c03231df598bd927029".to_string(),
-            Network::Testnet,
-        )
-    );
+    // println!(
+    //     "{}",
+    //     get_taproot_address_from_pubkey(
+    //         &"03b1bf1c41b4c03d5e43129bd64b8cf8d590c95226e6d62c03231df598bd927029".to_string(),
+    //         Network::Testnet,
+    //     )
+    // );
+    let public_key_hex = "0320f65ad1c4c41f984291216199d52047cdbb0c942f7e2a750fade9f744a3c846";
+    let secp = Secp256k1::new();
+    let public_key =
+        secp256k1::PublicKey::from_str(&public_key_hex).expect("statistically impossible to hit");
+    let (untweaked_x_only_public_key, _parity) = public_key.x_only_public_key();
+    let merkle_root = None;
+    let tweak =
+        TapTweakHash::from_key_and_tweak(untweaked_x_only_public_key, merkle_root).to_scalar();
+    let (tweaked_x_only_public_key, _parity) = untweaked_x_only_public_key
+        .add_tweak(&secp, &tweak)
+        .expect("Tap tweak failed");
+    println!("{}", tweaked_x_only_public_key.to_string())
 }

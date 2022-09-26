@@ -788,12 +788,16 @@ pub fn get_wif_from_private_key(
 
 #[derive(Copy, Clone)]
 pub enum AddressType {
+    /// Pay to pubkey hash.
     P2PKH,
+    /// Pay to script hash.
     P2SH,
+    // TODO: ADD P2WSH
+    //P2wsh,/// Pay to witness script hash.
     // This should probably be named "Segwit<Something>", to differenciate from a bech32 taproot
     // address. Maybe?
-    Bech32,
-    Taproot,
+    P2WPKH,
+    P2TR,
 }
 
 pub fn get_p2sh_address_from_script_hash(script_hash: &String, network: Network) -> String {
@@ -866,9 +870,9 @@ pub fn get_address_from_pub_key_hash(
     match address_type {
         AddressType::P2PKH => get_p2pkh_address_from_pubkey_hash(public_key_hash, network),
         AddressType::P2SH => get_p2sh_address_from_pubkey_hash(public_key_hash, network),
-        AddressType::Bech32 => get_bech_32_address_from_pubkey_hash(public_key_hash, network),
-        AddressType::Taproot => {
-            todo!("Need to implement functionality to get taproot address from public key")
+        AddressType::P2WPKH => get_p2wpkh_address_from_pubkey_hash(public_key_hash, network),
+        AddressType::P2TR => {
+            todo!("Not sure if you can get pub key hash from a taproot address. Instead, use get address from public key, not hash")
         }
     }
 }
@@ -893,7 +897,7 @@ fn get_bech32_address_from_witness_program(
     address
 }
 
-pub fn get_taproot_address_from_pubkey(public_key_hex: &String, network: Network) -> String {
+pub fn get_p2tr_address_from_pubkey(public_key_hex: &String, network: Network) -> String {
     // Helpful to check: https://slowli.github.io/bech32-buffer/
     // Current version is 00
     // Source: https://en.bitcoin.it/wiki/Bech32
@@ -901,15 +905,16 @@ pub fn get_taproot_address_from_pubkey(public_key_hex: &String, network: Network
     //
     let witness_version = 1;
     let secp = Secp256k1::new();
-    let public_key =
-        secp256k1::PublicKey::from_str(&public_key_hex).expect("statistically impossible to hit");
-    let (untweaked_x_only_public_key, _parity) = public_key.x_only_public_key();
-    let merkle_root = None;
-    let tweak =
-        TapTweakHash::from_key_and_tweak(untweaked_x_only_public_key, merkle_root).to_scalar();
-    let (tweaked_x_only_public_key, _parity) = untweaked_x_only_public_key
-        .add_tweak(&secp, &tweak)
-        .expect("Tap tweak failed");
+    let tweaked_x_only_public_key = get_tweaked_x_only_public_key_from_public_key(public_key_hex);
+    // let public_key =
+    //     secp256k1::PublicKey::from_str(&public_key_hex).expect("statistically impossible to hit");
+    // let (untweaked_x_only_public_key, _parity) = public_key.x_only_public_key();
+    // let merkle_root = None;
+    // let tweak =
+    //     TapTweakHash::from_key_and_tweak(untweaked_x_only_public_key, merkle_root).to_scalar();
+    // let (tweaked_x_only_public_key, _parity) = untweaked_x_only_public_key
+    //     .add_tweak(&secp, &tweak)
+    //     .expect("Tap tweak failed");
     let address = get_bech32_address_from_witness_program(
         witness_version,
         &tweaked_x_only_public_key.to_string(),
@@ -918,7 +923,7 @@ pub fn get_taproot_address_from_pubkey(public_key_hex: &String, network: Network
     address
 }
 
-pub fn get_bech_32_address_from_pubkey_hash(pub_key_hash: &String, network: Network) -> String {
+pub fn get_p2wpkh_address_from_pubkey_hash(pub_key_hash: &String, network: Network) -> String {
     // Helpful to check: https://slowli.github.io/bech32-buffer/
     // Current version is 00
     // Source: https://en.bitcoin.it/wiki/Bech32
@@ -943,13 +948,13 @@ pub fn get_address_from_pub_key(
     address_type: AddressType,
 ) -> String {
     match address_type {
-        AddressType::P2PKH | AddressType::P2SH | AddressType::Bech32 => {
+        AddressType::P2PKH | AddressType::P2SH | AddressType::P2WPKH => {
             let pub_key_hash = get_public_key_hash_from_public_key(&pub_key);
 
             let address = get_address_from_pub_key_hash(&pub_key_hash, network, address_type);
             address
         }
-        AddressType::Taproot => get_taproot_address_from_pubkey(pub_key, network),
+        AddressType::P2TR => get_p2tr_address_from_pubkey(pub_key, network),
     }
 }
 
@@ -1045,6 +1050,20 @@ pub fn hash160_for_hex(hex_to_hash: &String) -> String {
     let sha256_as_hex_array = decode_hex(&sha256).unwrap();
     let public_key_ripemd160 = ripemd160::Hash::hash(&sha256_as_hex_array);
     public_key_ripemd160.to_string()
+}
+
+pub fn get_tweaked_x_only_public_key_from_public_key(public_key_hex: &String) -> String {
+    let secp = Secp256k1::new();
+    let public_key =
+        secp256k1::PublicKey::from_str(&public_key_hex).expect("statistically impossible to hit");
+    let (untweaked_x_only_public_key, _parity) = public_key.x_only_public_key();
+    let merkle_root = None;
+    let tweak =
+        TapTweakHash::from_key_and_tweak(untweaked_x_only_public_key, merkle_root).to_scalar();
+    let (tweaked_x_only_public_key, _parity) = untweaked_x_only_public_key
+        .add_tweak(&secp, &tweak)
+        .expect("Tap tweak failed");
+    tweaked_x_only_public_key.to_string()
 }
 
 pub fn get_public_key_hash_from_public_key(public_key: &String) -> String {
@@ -2110,7 +2129,7 @@ pub struct HDWalletBip84 {
 }
 impl HDWalletBip84 {
     pub fn pretty_print_derived_addressed(&self, network: Network) -> () {
-        let address_type = AddressType::Bech32;
+        let address_type = AddressType::P2WPKH;
         for (key, value) in self.derived_addresses.clone() {
             let should_compress = true;
             let public_key_hex = match &value {
@@ -2244,7 +2263,7 @@ pub struct HDWalletBip86 {
 }
 impl HDWalletBip86 {
     pub fn pretty_print_derived_addressed(&self, network: Network) -> () {
-        let address_type = AddressType::Taproot;
+        let address_type = AddressType::P2TR;
         for (key, value) in self.derived_addresses.clone() {
             let should_compress = true;
             let public_key_hex = match &value {
