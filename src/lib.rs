@@ -937,7 +937,11 @@ pub fn get_p2wpkh_address_from_pubkey_hash(pub_key_hash: &String, network: Netwo
     );
     address
 }
-pub fn get_pubkey_hash_from_bech32_address(address: &String) -> String {
+pub fn get_tweaked_x_only_public_key_from_p2tr_address(address: &String) -> String {
+    let witness = WitnessProgram::from_address(address).unwrap();
+    encode_hex(&witness.program())
+}
+pub fn get_pubkey_hash_from_p2wpkh_address(address: &String) -> String {
     let witness = WitnessProgram::from_address(address).unwrap();
     encode_hex(&witness.program())
 }
@@ -1316,7 +1320,7 @@ pub fn get_public_key_hash_from_address(address: &String) -> String {
     if bitcoin_address::is_legacy(address) {
         get_public_key_hash_from_non_bech_32_address(address)
     } else if bitcoin_address::is_segwit_native(address) {
-        get_pubkey_hash_from_bech32_address(address)
+        get_pubkey_hash_from_p2wpkh_address(address)
     } else if bitcoin_address::is_nested_segwit(address) {
         panic!(
             "Couldn't get public key hash from address ({}). Nested segwit addresses not supported. Instead, you should use get_script_hash_from_p2sh_address() function",

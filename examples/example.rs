@@ -7,10 +7,10 @@ use bitcoin_hd_keys::{
     generate_bip84_hd_wallet_from_mnemonic_words, generate_bip86_hd_wallet_from_mnemonic_words,
     get_128_bits_of_entropy, get_address_from_pub_key, get_address_from_pub_key_hash,
     get_mnemonic_words, get_p2sh_address_from_script_hash, get_p2tr_address_from_pubkey,
-    get_p2wpkh_address_from_pubkey_hash, get_pubkey_hash_from_bech32_address,
+    get_p2wpkh_address_from_pubkey_hash, get_pubkey_hash_from_p2wpkh_address,
     get_public_key_hash_from_address, get_public_key_hash_from_non_bech_32_address,
-    get_script_hash_from_p2sh_address, get_wif_from_private_key, hash160_for_hex, AddressType,
-    Network,
+    get_script_hash_from_p2sh_address, get_tweaked_x_only_public_key_from_p2tr_address,
+    get_wif_from_private_key, hash160_for_hex, AddressType, Network,
 };
 use secp256k1::Secp256k1;
 
@@ -218,5 +218,9 @@ fn main() {
     let (tweaked_x_only_public_key, _parity) = untweaked_x_only_public_key
         .add_tweak(&secp, &tweak)
         .expect("Tap tweak failed");
-    println!("{}", tweaked_x_only_public_key.to_string())
+    println!("{}", tweaked_x_only_public_key.to_string());
+    let a = get_tweaked_x_only_public_key_from_p2tr_address(
+        &"tb1pyjfdfl6yvywmdvtqtj26gxm4l923mygcr2hsdqjkgf4qtg53xdcsrxj8hw".to_string(),
+    );
+    println!("{}", a);
 }
