@@ -790,7 +790,7 @@ pub enum AddressType {
     // This should probably be named "Segwit<Something>", to differenciate from a bech32 taproot
     // address. Maybe?
     Bech32,
-    Taproot
+    Taproot,
 }
 
 pub fn get_p2sh_address_from_script_hash(script_hash: &String, network: Network) -> String {
@@ -863,12 +863,16 @@ pub fn get_address_from_pub_key_hash(
     match address_type {
         AddressType::P2PKH => get_p2pkh_address_from_pubkey_hash(public_key_hash, network),
         AddressType::P2SH => get_p2sh_address_from_pubkey_hash(public_key_hash, network),
-        AddressType::Bech32 => get_bech_32_address_from_pubkey_hash(public_key_hash, network, false),
-        AddressType::Taproot => todo!("Need to implement functionality to get taproot address from public key"),
+        AddressType::Bech32 => {
+            get_bech_32_address_from_pubkey_hash(public_key_hash, network, false)
+        }
+        AddressType::Taproot => {
+            todo!("Need to implement functionality to get taproot address from public key")
+        }
     }
 }
 
-fn get_bech_32_address_from_pubkey_hash(
+pub fn get_bech_32_address_from_pubkey_hash(
     pub_key_hash: &String,
     network: Network,
     should_get_taproot_address: bool,

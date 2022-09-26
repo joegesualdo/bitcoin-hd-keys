@@ -4,8 +4,8 @@ use bitcoin_hd_keys::{
     create_fingerprint, generate_bip32_hd_wallet_from_mnemonic_words,
     generate_bip44_hd_wallet_from_mnemonic_words, generate_bip49_hd_wallet_from_mnemonic_words,
     generate_bip84_hd_wallet_from_mnemonic_words, get_128_bits_of_entropy,
-    get_address_from_pub_key, get_address_from_pub_key_hash, get_mnemonic_words,
-    get_p2sh_address_from_script_hash, get_pubkey_hash_from_bech32_address,
+    get_address_from_pub_key, get_address_from_pub_key_hash, get_bech_32_address_from_pubkey_hash,
+    get_mnemonic_words, get_p2sh_address_from_script_hash, get_pubkey_hash_from_bech32_address,
     get_public_key_hash_from_address, get_public_key_hash_from_non_bech_32_address,
     get_script_hash_from_p2sh_address, get_wif_from_private_key, hash160_for_hex, AddressType,
     Network,
@@ -199,6 +199,10 @@ fn main() {
     println!("");
     println!(
         "{}",
-        hash160_for_hex(&"0014615e57fbd17a5dc62c08a782d99b948887c01e18".to_string())
+        get_bech_32_address_from_pubkey_hash(
+            &"03b1bf1c41b4c03d5e43129bd64b8cf8d590c95226e6d62c03231df598bd927029".to_string(),
+            Network::Testnet,
+            true
+        )
     );
 }
