@@ -787,7 +787,10 @@ pub fn get_wif_from_private_key(
 pub enum AddressType {
     P2PKH,
     P2SH,
+    // This should probably be named "Segwit<Something>", to differenciate from a bech32 taproot
+    // address. Maybe?
     Bech32,
+    Taproot
 }
 
 pub fn get_p2sh_address_from_script_hash(script_hash: &String, network: Network) -> String {
@@ -860,15 +863,20 @@ pub fn get_address_from_pub_key_hash(
     match address_type {
         AddressType::P2PKH => get_p2pkh_address_from_pubkey_hash(public_key_hash, network),
         AddressType::P2SH => get_p2sh_address_from_pubkey_hash(public_key_hash, network),
-        AddressType::Bech32 => get_bech_32_address_from_pubkey_hash(public_key_hash, network),
+        AddressType::Bech32 => get_bech_32_address_from_pubkey_hash(public_key_hash, network, false),
+        AddressType::Taproot => todo!("Need to implement functionality to get taproot address from public key"),
     }
 }
 
-fn get_bech_32_address_from_pubkey_hash(pub_key_hash: &String, network: Network) -> String {
+fn get_bech_32_address_from_pubkey_hash(
+    pub_key_hash: &String,
+    network: Network,
+    should_get_taproot_address: bool,
+) -> String {
     // Helpful to check: https://slowli.github.io/bech32-buffer/
     // Current version is 00
     // Source: https://en.bitcoin.it/wiki/Bech32
-    let witness_version = 0;
+    let witness_version = if should_get_taproot_address { 1 } else { 0 };
     let byte_array = decode_hex(&pub_key_hash).unwrap();
     // TODO: Implement the conversion from public_key to bech32 myself
     // We're using an external library

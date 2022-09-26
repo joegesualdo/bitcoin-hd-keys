@@ -155,17 +155,17 @@ fn main() {
         "pulp".to_string(),
         "garage".to_string(),
     ];
-    let sparrow_bip84_hd_wallet = generate_bip84_hd_wallet_from_mnemonic_words(
-        sparrow_taproot_wallet_mnemonic_words,
-        None,
-        1,
-        0,
-        5,
-        false,
-        Network::Testnet,
-    );
-    println!("{:#?}", sparrow_bip84_hd_wallet);
-    sparrow_bip84_hd_wallet.pretty_print_derived_addressed(Network::Testnet);
+    // let sparrow_bip84_hd_wallet = generate_bip84_hd_wallet_from_mnemonic_words(
+    //     sparrow_p2wpkh_wallet_mnemonic_words,
+    //     None,
+    //     1,
+    //     0,
+    //     5,
+    //     false,
+    //     Network::Testnet,
+    // );
+    // println!("{:#?}", sparrow_bip84_hd_wallet);
+    // sparrow_bip84_hd_wallet.pretty_print_derived_addressed(Network::Testnet);
     // let fp = create_fingerprint(
     //     "0290a2e96ae8e35adfe1a465fcd2145a83b864893c53051101b759014e558c9f41".to_string(),
     // );
