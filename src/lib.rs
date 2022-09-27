@@ -4,6 +4,7 @@ use std::num::{NonZeroU32, ParseIntError};
 use std::str::FromStr;
 mod bip39;
 
+use binary_utils::*;
 use bip39::WORDS;
 use bitcoin::hashes::{ripemd160, Hash};
 use bitcoin::schnorr::UntweakedPublicKey;
@@ -11,12 +12,18 @@ use bitcoin::util::base58::check_encode_slice;
 use bitcoin::util::base58::from_check;
 use bitcoin::util::taproot::TapTweakHash;
 use bitcoin_bech32::{u5, WitnessProgram};
+use bitcoin_utils::*;
 use hmac_sha512::HMAC;
 use num_bigint::BigUint;
 use rand::{thread_rng, RngCore};
 use ring::{digest, pbkdf2};
 use secp256k1::{Scalar, Secp256k1, SecretKey};
 use sha2::{Digest, Sha256};
+
+use hex_utilities::{
+    convert_decimal_to_32_byte_hex, convert_decimal_to_8_byte_hex, convert_hex_to_decimal,
+    decode_hex, encode_hex,
+};
 
 // TODO: Maybe also incorporate 'h' in addition to '
 const HARDENED_DERIVATION_CHARACTER: &str = "'";
@@ -51,11 +58,6 @@ impl NonMasterKeys {
     ) -> SerializedExtendedKeys {
         serialize_non_master_key(&self, parent_public_key, depth, child_index, network, bip)
     }
-}
-#[derive(Debug, Clone, Copy)]
-pub enum Network {
-    Mainnet,
-    Testnet,
 }
 #[derive(Debug, Clone)]
 pub struct MasterKeys {
@@ -134,35 +136,6 @@ pub enum DecodedExtendedKeySerialized {
     PublicKey(DecodedExtendedSerializedPublicKey),
 }
 
-fn convert_decimal_to_32_byte_hex_with(num: u32) -> String {
-    format!("{:08x}", num)
-}
-fn convert_decimal_to_8_byte_hex_with(num: u8) -> String {
-    format!("{:02x}", num)
-}
-fn convert_hex_to_decimal(hex: &str) -> Result<i64, ParseIntError> {
-    let z = i64::from_str_radix(hex, 16);
-    z
-}
-
-fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
-        .collect()
-}
-fn encode_hex(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for &b in bytes {
-        write!(&mut s, "{:02x}", b).unwrap();
-    }
-    s
-}
-
-fn concat_u8(first: &[u8], second: &[u8]) -> Vec<u8> {
-    [first, second].concat()
-}
-
 // Notes
 // - A hexidecimal is represetnted by only 4 bits (one byte). We use u8 here because we can't use a
 // u4.
@@ -190,77 +163,6 @@ fn sha256_entropy_hex_byte_array(hex_byte_array: &Vec<u8>) -> Vec<u8> {
     let sha256_result = hasher.finalize();
     sha256_result.to_vec()
 }
-fn convert_to_binary_string(num: u8, bits_to_show_count: u64) -> String {
-    fn crop_letters(s: &str, pos: usize) -> &str {
-        match s.char_indices().skip(pos).next() {
-            Some((pos, _)) => &s[pos..],
-            None => "",
-        }
-    }
-    fn format_binary_with_4_bits(num: u8) -> String {
-        // The 06 pads with zeros to a width of 6. That width includes 0b (length=2)
-        format!("{:#06b}", num)
-    }
-    fn format_binary_with_8_bits(num: u8) -> String {
-        // The 10 pads with zeros to a width of 10. That width includes 0b (length=2)
-        format!("{:#010b}", num)
-    }
-    let binary_string_with_prefix = match bits_to_show_count {
-        4 => format_binary_with_4_bits(num),
-        8 => format_binary_with_8_bits(num),
-        _ => panic!(
-            "binary_string_without_prefix: bits_to_show_count of {} not supported",
-            bits_to_show_count
-        ),
-    };
-    let binary_string_without_prefix = crop_letters(&binary_string_with_prefix, 2);
-    binary_string_without_prefix.to_string()
-}
-
-fn get_binary_string_for_byte_array(byte_array: &Vec<u8>) -> String {
-    let mut binary_string = String::new();
-    for i in byte_array {
-        let binary_str = convert_to_binary_string(*i, 8);
-        binary_string.push_str(binary_str.as_str())
-    }
-    binary_string
-}
-fn split_string_with_spaces_for_substrings_with_length(s: &str, length: u64) -> String {
-    let string_with_spaces_seperating_substrings =
-        s.chars().enumerate().fold(String::new(), |acc, (i, c)| {
-            //if i != 0 && i == 11 {
-            if i != 0 && (i % length as usize == 0) {
-                format!("{} {}", acc, c)
-            } else {
-                format!("{}{}", acc, c)
-            }
-        });
-    string_with_spaces_seperating_substrings
-}
-
-fn split_binary_string_into_framents_of_11_bits(binary_string: &str) -> Vec<String> {
-    let entropy_plus_checksum_binary_with_spaces_seperating =
-        split_string_with_spaces_for_substrings_with_length(&binary_string, 11);
-    let word_binary: Vec<&str> = entropy_plus_checksum_binary_with_spaces_seperating
-        .split(" ")
-        .collect();
-    word_binary.iter().map(|&s| s.to_string()).collect()
-}
-fn split_binary_string_into_framents_of_5_bits(binary_string: &str) -> Vec<String> {
-    let entropy_plus_checksum_binary_with_spaces_seperating =
-        split_string_with_spaces_for_substrings_with_length(&binary_string, 5);
-    let word_binary: Vec<&str> = entropy_plus_checksum_binary_with_spaces_seperating
-        .split(" ")
-        .collect();
-    word_binary.iter().map(|&s| s.to_string()).collect()
-}
-
-fn convert_binary_to_int(binary_string: &str) -> isize {
-    let bin_idx = binary_string;
-    let intval = isize::from_str_radix(bin_idx, 2).unwrap();
-    intval
-}
-
 fn serialize_master_key(
     master_keys: &MasterKeys,
     network: Network,
@@ -341,18 +243,6 @@ pub enum Bip {
     Bip86,
 }
 
-pub fn sha256_hex(hex_to_hash: &String) -> String {
-    let hex_byte_array = decode_hex(&hex_to_hash).unwrap();
-    let mut hasher = Sha256::new();
-    // write input message
-    hasher.update(&hex_byte_array);
-    // read hash digest and consume hasher
-    let sha256_result = hasher.finalize();
-    let sha256_result_array = sha256_result.to_vec();
-    let hex_result = encode_hex(&sha256_result_array);
-    hex_result
-}
-
 pub fn create_fingerprint(public_key_hex: &String) -> String {
     let sha256_result_hex = sha256_hex(public_key_hex);
     let sha256_result_array = decode_hex(&sha256_result_hex).unwrap();
@@ -362,24 +252,6 @@ pub fn create_fingerprint(public_key_hex: &String) -> String {
     first_four_hex
 }
 
-pub fn double_sha256_hex(hex_to_hash: &String) -> String {
-    let hex_byte_array = decode_hex(&hex_to_hash).unwrap();
-    let mut hasher = Sha256::new();
-    // write input message
-    hasher.update(&hex_byte_array);
-    // read hash digest and consume hasher
-    let sha256_result = hasher.finalize();
-    let sha256_result_array = sha256_result.to_vec();
-
-    let hex_byte_array_2 = sha256_result_array;
-    let mut hasher_2 = Sha256::new();
-    // write input message
-    hasher_2.update(&hex_byte_array_2);
-    // read hash digest and consume hasher
-    let sha256_result_2 = hasher_2.finalize();
-    let sha256_result_array_2 = sha256_result_2.to_vec();
-    encode_hex(&sha256_result_array_2)
-}
 fn serialize_key(args: SerializeKeyArgs) -> String {
     let SerializeKeyArgs {
         keys_to_serialize,
@@ -470,7 +342,7 @@ fn serialize_key(args: SerializeKeyArgs) -> String {
         format!("{}{}", "00", private_key_hex)
     };
 
-    let depth = convert_decimal_to_8_byte_hex_with(depth.unwrap_or(0));
+    let depth = convert_decimal_to_8_byte_hex(depth.unwrap_or(0));
     let parent_fingerprint = match &parent_public_key {
         Some(parent_public_key) => create_fingerprint(&parent_public_key.to_string()),
         None => "00000000".to_string(),
@@ -483,7 +355,7 @@ fn serialize_key(args: SerializeKeyArgs) -> String {
     } else {
         child_index
     };
-    let child_number = convert_decimal_to_32_byte_hex_with(child_index_with_hardened_factored_in);
+    let child_number = convert_decimal_to_32_byte_hex(child_index_with_hardened_factored_in);
     let chain_code = chain_code_hex;
     // let key = format!("{}{}", "00", private_key);
     let serialized = format!(
@@ -537,15 +409,6 @@ fn get_child_extended_public_key(
     let child_chain_code: String = encode_hex(right);
 
     return (child_public_key, child_chain_code);
-}
-fn get_compressed_public_key_from_private_key(private_key: &str) -> String {
-    // Create 512 bit public key
-    let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_str(private_key).unwrap();
-    // We're getting the NEWER compressed version of the public key:
-    //    Source: https://en.bitcoin.it/wiki/Elliptic_Curve_Digital_Signature_Algorithm
-    let public_key_uncompressed = secret_key.public_key(&secp).serialize();
-    encode_hex(&public_key_uncompressed)
 }
 fn get_hardened_child_extended_private_key(
     master_chain_code: &[u8],
@@ -750,328 +613,6 @@ fn get_child_keys(
         }
     }
     children
-}
-
-pub fn get_wif_from_private_key(
-    private_key: &String,
-    network: Network,
-    should_compress: bool,
-) -> String {
-    // 0x80 is used for the version/application byte
-    // https://river.com/learn/terms/w/wallet-import-format-wif/#:~:text=WIF%20format%20adds%20a%20prefix,should%20use%20compressed%20SEC%20format.
-    let version_application_byte_for_mainnet = "80";
-    let version_application_byte_for_testnet = "ef";
-
-    let version_application_byte = match network {
-        Network::Mainnet => version_application_byte_for_mainnet,
-        Network::Testnet => version_application_byte_for_testnet,
-    };
-
-    let private_key_hex = decode_hex(&private_key).unwrap();
-    let version_array = decode_hex(version_application_byte).unwrap();
-    // What does check encodings do?
-    //   - does a sha25 twice, then gets the first 4 bytes of that Result
-    //   - takes those first four bites and appends them to the original (version + hex array)
-    //   - Read "Ecoding a private key" section here: https://en.bitcoin.it/wiki/Base58Check_encoding
-    let end = "01";
-    let end_array = decode_hex(end).unwrap();
-    let combined_version_and_private_key_hex = concat_u8(&version_array, &private_key_hex);
-    let combined_version_and_private_key_hex_with_end_array = if should_compress {
-        concat_u8(&combined_version_and_private_key_hex, &end_array)
-    } else {
-        combined_version_and_private_key_hex
-    };
-    // TODO: THIS IS ONLY FOR COMPRESSED. How would we do uncompressed?
-    let wif_private_key = check_encode_slice(&combined_version_and_private_key_hex_with_end_array);
-    wif_private_key
-}
-
-#[derive(Copy, Clone)]
-pub enum AddressType {
-    /// Pay to pubkey hash.
-    P2PKH,
-    /// Pay to script hash.
-    P2SH,
-    // TODO: ADD P2WSH
-    //P2wsh,/// Pay to witness script hash.
-    // This should probably be named "Segwit<Something>", to differenciate from a bech32 taproot
-    // address. Maybe?
-    P2WPKH,
-    P2TR,
-}
-
-pub fn get_p2sh_address_from_script_hash(script_hash: &String, network: Network) -> String {
-    // https://bitcoin.stackexchange.com/questions/111483/parsing-p2sh-address-from-output-script
-    let p2sh_version_application_byte = "05";
-    let p2sh_testnet_version_application_byte = "c4";
-    let version_byte = match network {
-        Network::Mainnet => decode_hex(p2sh_version_application_byte).unwrap(),
-        Network::Testnet => decode_hex(p2sh_testnet_version_application_byte).unwrap(),
-    };
-    let script_hash_bytes = decode_hex(&script_hash).unwrap();
-    let script_hash_with_version_byte = concat_u8(&version_byte, &script_hash_bytes);
-    let address = check_encode_slice(&script_hash_with_version_byte);
-    address
-}
-fn get_p2sh_address_from_pubkey_hash(public_key_hash: &String, network: Network) -> String {
-    // https://bitcoin.stackexchange.com/questions/75910/how-to-generate-a-native-segwit-address-and-p2sh-segwit-address-from-a-standard
-    let prefix_bytes = decode_hex("0014").unwrap();
-    let public_key_hash_bytes = decode_hex(public_key_hash).unwrap();
-    let redeem_script = concat_u8(&prefix_bytes, &public_key_hash_bytes);
-    let redeem_script_sha256 = sha256::digest_bytes(&redeem_script);
-    let redeem_script_sha256_as_hex_array = decode_hex(&redeem_script_sha256).unwrap();
-    let redeem_script_ripemd160 = ripemd160::Hash::hash(&redeem_script_sha256_as_hex_array);
-    let hash160 = redeem_script_ripemd160.to_string();
-    return get_p2sh_address_from_script_hash(&hash160, network);
-    // Extracted this into get_p2sh_address_from_script_hash(script_hash: &String, network: Network) -> String {
-    // let hash160_bytes = decode_hex(&hash160).unwrap();
-    // let p2sh_version_application_byte = "05";
-    // let p2sh_testnet_version_application_byte = "c4";
-    // let version_byte = match network {
-    //     Network::Mainnet => decode_hex(p2sh_version_application_byte).unwrap(),
-    //     Network::Testnet => decode_hex(p2sh_testnet_version_application_byte).unwrap(),
-    // };
-    // let hash160_with_version_byte = concat_u8(&version_byte, &hash160_bytes);
-    // let address = check_encode_slice(&hash160_with_version_byte);
-    // println!("{:#?}", hash160_with_version_byte);
-    // address
-}
-fn get_p2pkh_address_from_pubkey_hash(public_key_hash: &String, network: Network) -> String {
-    // SEE ALL VERSION APPLICATION CODES HERE: https://en.bitcoin.it/wiki/List_of_address_prefixes
-    // TODO: ALL ALL TYPES OF ADDRESSES
-    let p2pkh_version_application_byte = "00";
-    let p2pkh_testnet_version_application_byte = "6f";
-
-    let version_application_byte = match network {
-        Network::Mainnet => p2pkh_version_application_byte,
-        Network::Testnet => p2pkh_testnet_version_application_byte,
-    };
-    // AddressType::P2SH => match network {
-    //     Network::Mainnet => p2sh_version_application_byte,
-    //     Network::Testnet => p2sh_testnet_version_application_byte,
-    // },
-
-    // let hex_array = Vec::from_hex(public_key_hash).unwrap();
-    let hex_array = decode_hex(&public_key_hash).unwrap();
-    let version_array = decode_hex(version_application_byte).unwrap();
-    let a = concat_u8(&version_array, &hex_array);
-    // What does check encodings do?
-    //   - does a sha25 twice, then gets the first 4 bytes of that Result
-    //   - takes those first four bites and appends them to the original (version + hex array)
-    //   - Read "Encoding a bitcoin address": https://en.bitcoin.it/wiki/Base58Check_encoding
-    let address = check_encode_slice(&a);
-    address
-}
-pub fn get_address_from_pub_key_hash(
-    public_key_hash: &String,
-    network: Network,
-    address_type: AddressType,
-) -> String {
-    match address_type {
-        AddressType::P2PKH => get_p2pkh_address_from_pubkey_hash(public_key_hash, network),
-        AddressType::P2SH => get_p2sh_address_from_pubkey_hash(public_key_hash, network),
-        AddressType::P2WPKH => get_p2wpkh_address_from_pubkey_hash(public_key_hash, network),
-        AddressType::P2TR => {
-            todo!("Not sure if you can get pub key hash from a taproot address. Instead, use get address from public key, not hash")
-        }
-    }
-}
-
-fn get_bech32_address_from_witness_program(
-    witness_version: u8,
-    program_hex: &String,
-    network: Network,
-) -> String {
-    let network_for_bech32_library = match network {
-        Network::Mainnet => bitcoin_bech32::constants::Network::Bitcoin,
-        Network::Testnet => bitcoin_bech32::constants::Network::Testnet,
-    };
-    let byte_array = decode_hex(&program_hex).unwrap();
-    let witness_program = WitnessProgram::new(
-        u5::try_from_u8(witness_version).unwrap(),
-        byte_array,
-        network_for_bech32_library,
-    )
-    .unwrap();
-    let address = witness_program.to_address();
-    address
-}
-
-pub fn get_p2tr_address_from_pubkey(public_key_hex: &String, network: Network) -> String {
-    // Helpful to check: https://slowli.github.io/bech32-buffer/
-    // Current version is 00
-    // Source: https://en.bitcoin.it/wiki/Bech32
-    // Source: https://www.youtube.com/watch?v=YGAeMnN4O_k&t=631s
-    //
-    let witness_version = 1;
-    let secp = Secp256k1::new();
-    let tweaked_x_only_public_key = get_tweaked_x_only_public_key_from_public_key(public_key_hex);
-    // let public_key =
-    //     secp256k1::PublicKey::from_str(&public_key_hex).expect("statistically impossible to hit");
-    // let (untweaked_x_only_public_key, _parity) = public_key.x_only_public_key();
-    // let merkle_root = None;
-    // let tweak =
-    //     TapTweakHash::from_key_and_tweak(untweaked_x_only_public_key, merkle_root).to_scalar();
-    // let (tweaked_x_only_public_key, _parity) = untweaked_x_only_public_key
-    //     .add_tweak(&secp, &tweak)
-    //     .expect("Tap tweak failed");
-    let address = get_bech32_address_from_witness_program(
-        witness_version,
-        &tweaked_x_only_public_key.to_string(),
-        network,
-    );
-    address
-}
-
-pub fn get_p2wpkh_address_from_pubkey_hash(pub_key_hash: &String, network: Network) -> String {
-    // Helpful to check: https://slowli.github.io/bech32-buffer/
-    // Current version is 00
-    // Source: https://en.bitcoin.it/wiki/Bech32
-    let witness_version = 0;
-    // TODO: Implement the conversion from public_key to bech32 myself
-    // We're using an external library
-    let address = get_bech32_address_from_witness_program(
-        witness_version,
-        &pub_key_hash.to_string(),
-        network,
-    );
-    address
-}
-pub fn get_tweaked_x_only_public_key_from_p2tr_address(address: &String) -> String {
-    let witness = WitnessProgram::from_address(address).unwrap();
-    encode_hex(&witness.program())
-}
-pub fn get_pubkey_hash_from_p2wpkh_address(address: &String) -> String {
-    let witness = WitnessProgram::from_address(address).unwrap();
-    encode_hex(&witness.program())
-}
-
-pub fn get_address_from_pub_key(
-    pub_key: &String,
-    network: Network,
-    address_type: AddressType,
-) -> String {
-    match address_type {
-        AddressType::P2PKH | AddressType::P2SH | AddressType::P2WPKH => {
-            let pub_key_hash = get_public_key_hash_from_public_key(&pub_key);
-
-            let address = get_address_from_pub_key_hash(&pub_key_hash, network, address_type);
-            address
-        }
-        AddressType::P2TR => get_p2tr_address_from_pubkey(pub_key, network),
-    }
-}
-
-pub fn get_public_key_from_wif(wif: &String) -> String {
-    // Check: https://coinb.in/#verify
-    let private_key = convert_wif_to_private_key(&wif);
-    let public_key = get_public_key_from_private_key(&private_key, is_wif_compressed(&wif));
-    public_key
-}
-
-fn binary_to_hex(b: &str) -> Option<&str> {
-    match b {
-        "0000" => Some("0"),
-        "0001" => Some("1"),
-        "0010" => Some("2"),
-        "0011" => Some("3"),
-        "0100" => Some("4"),
-        "0101" => Some("5"),
-        "0110" => Some("6"),
-        "0111" => Some("7"),
-        "1000" => Some("8"),
-        "1001" => Some("9"),
-        "1010" => Some("A"),
-        "1011" => Some("B"),
-        "1100" => Some("C"),
-        "1101" => Some("D"),
-        "1110" => Some("E"),
-        "1111" => Some("F"),
-        _ => None,
-    }
-}
-fn convert_string_to_hex(s: &String) -> String {
-    let wif_bytes = s.as_bytes();
-    let binary = get_binary_string_for_byte_array(&wif_bytes.to_vec());
-
-    let mut s = String::new();
-    let mut b = String::new();
-    for byte in wif_bytes {
-        let binary_string = convert_to_binary_string(*byte, 8);
-
-        let first_4_binary = &binary_string[0..=3];
-        let first_4_hex = binary_to_hex(first_4_binary).unwrap();
-        let last_4_binary = &binary_string[4..=7];
-        let last_4_hex = binary_to_hex(last_4_binary).unwrap();
-        let to_p = format!("{}{}", first_4_hex, last_4_hex);
-
-        s.push_str(&to_p);
-    }
-    s
-}
-fn decode_binary(s: &str) -> Result<Vec<u8>, ParseIntError> {
-    (0..s.len())
-        .step_by(9)
-        .map(|i| u8::from_str_radix(&s[i..i + 8], 2))
-        .collect()
-}
-fn is_wif_compressed(wif: &String) -> bool {
-    // Source:https://en.bitcoin.it/wiki/Wallet_import_format
-    let first_char_of_wif = wif.chars().nth(0).unwrap();
-    let is_compressed_wif = first_char_of_wif == 'K'
-        || first_char_of_wif == 'L'
-        || first_char_of_wif == 'M'
-        || first_char_of_wif == 'c';
-    is_compressed_wif
-}
-fn get_public_key_from_private_key(private_key: &String, is_compressed: bool) -> String {
-    // Create 512 bit public key
-    let secp = Secp256k1::new();
-    let secret_key = SecretKey::from_str(private_key).unwrap();
-    // We're getting the OLDER uncompressed version of the public key:
-    //    Source: https://en.bitcoin.it/wiki/Elliptic_Curve_Digital_Signature_Algorithm
-    let public_key = if is_compressed {
-        secret_key.public_key(&secp).serialize().to_vec()
-    } else {
-        secret_key
-            .public_key(&secp)
-            .serialize_uncompressed()
-            .to_vec()
-    };
-    encode_hex(&public_key)
-}
-
-fn hash160_for_non_hex(non_hex_string_to_hash: &String) -> String {
-    let string_as_array = non_hex_string_to_hash.as_bytes();
-    let sha256 = sha256::digest_bytes(&string_as_array);
-    let sha256_as_hex_array = sha256.as_bytes();
-    let ripemd160 = ripemd160::Hash::hash(&sha256_as_hex_array);
-    ripemd160.to_string()
-}
-pub fn hash160_for_hex(hex_to_hash: &String) -> String {
-    let hex_array = decode_hex(hex_to_hash).unwrap();
-    let sha256 = sha256_hex(hex_to_hash);
-    let sha256_as_hex_array = decode_hex(&sha256).unwrap();
-    let public_key_ripemd160 = ripemd160::Hash::hash(&sha256_as_hex_array);
-    public_key_ripemd160.to_string()
-}
-
-pub fn get_tweaked_x_only_public_key_from_public_key(public_key_hex: &String) -> String {
-    let secp = Secp256k1::new();
-    let public_key =
-        secp256k1::PublicKey::from_str(&public_key_hex).expect("statistically impossible to hit");
-    let (untweaked_x_only_public_key, _parity) = public_key.x_only_public_key();
-    let merkle_root = None;
-    let tweak =
-        TapTweakHash::from_key_and_tweak(untweaked_x_only_public_key, merkle_root).to_scalar();
-    let (tweaked_x_only_public_key, _parity) = untweaked_x_only_public_key
-        .add_tweak(&secp, &tweak)
-        .expect("Tap tweak failed");
-    tweaked_x_only_public_key.to_string()
-}
-
-pub fn get_public_key_hash_from_public_key(public_key: &String) -> String {
-    hash160_for_hex(public_key)
 }
 
 fn get_depth_from_derivation_path(derivation_path: &String) -> u8 {
@@ -1291,74 +832,6 @@ fn get_derived_addresses_for_derivation_path(
     found_children_with_full_derivation_path_as_key
 }
 
-pub fn get_script_hash_from_p2sh_address(address: &str) -> String {
-    if bitcoin_address::is_p2sh(&address.to_string()) {
-        let address_base58check_decoded = from_check(&address).unwrap();
-        let address_base58check_decoded_without_first_byte =
-            address_base58check_decoded.get(1..).unwrap();
-        let script_hash = encode_hex(&address_base58check_decoded_without_first_byte);
-        script_hash
-    } else {
-        panic!("Address is not p2sh: {}", address);
-    }
-}
-
-pub fn get_public_key_hash_from_non_bech_32_address(address: &String) -> String {
-    if bitcoin_address::is_legacy(&address.to_string()) {
-        let address_base58check_decoded = from_check(&address).unwrap();
-        let address_base58check_decoded_without_first_byte =
-            address_base58check_decoded.get(1..).unwrap();
-        let pub_key_hash = encode_hex(&address_base58check_decoded_without_first_byte);
-        pub_key_hash
-    } else {
-        panic!("Address must be legacy: {}", address);
-    }
-}
-pub fn get_public_key_hash_from_address(address: &String) -> String {
-    // TODO: This should be exaustive and work for every address types
-    // TODO: Implement taproot
-    if bitcoin_address::is_legacy(address) {
-        get_public_key_hash_from_non_bech_32_address(address)
-    } else if bitcoin_address::is_segwit_native(address) {
-        get_pubkey_hash_from_p2wpkh_address(address)
-    } else if bitcoin_address::is_nested_segwit(address) {
-        panic!(
-            "Couldn't get public key hash from address ({}). Nested segwit addresses not supported. Instead, you should use get_script_hash_from_p2sh_address() function",
-            address
-        );
-    } else {
-        panic!("Couldn't get public key hash from address: {}", address);
-    }
-}
-pub fn convert_wif_to_private_key(wif: &String) -> String {
-    // Check: https://coinb.in/#verify
-    // Source:https://en.bitcoin.it/wiki/Wallet_import_format
-    // 1. decode the base58check
-
-    let is_compressed_wif = is_wif_compressed(wif);
-    let wif_base58check_decoded_result = from_check(&wif);
-    let wif_base58check_decoded = from_check(&wif).unwrap();
-    // 2. drop the fist byte
-    // TODO: It's more complicated than this: "Drop the first byte (it should be 0x80, however
-    // legacy Electrum[1][2] or some SegWit vanity address generators[3] may use 0x81-0x87). If
-    // the private key corresponded to a compressed public key, also drop the last byte (it
-    // should be 0x01). If it corresponded to a compressed public key, the WIF string will have
-    // started with K or L (or M, if it's exported from legacy Electrum[1][2] etc[3]) instead
-    // of 5 (or c instead of 9 on testnet). This is the private key."
-    // Source: https://en.bitcoin.it/wiki/Wallet_import_format
-    let wif_base58check_decoded_without_first_byte = wif_base58check_decoded.get(1..).unwrap();
-    let wif_base58check_decoded_without_first_byte_and_adjusted_for_compression =
-        if is_compressed_wif {
-            wif_base58check_decoded_without_first_byte
-                .get(..=(wif_base58check_decoded_without_first_byte.len() - 2))
-                .unwrap()
-        } else {
-            wif_base58check_decoded_without_first_byte
-        };
-    let wif_base58check_decoded_without_first_byte_and_adjusted_for_compression_hex =
-        encode_hex(wif_base58check_decoded_without_first_byte_and_adjusted_for_compression);
-    wif_base58check_decoded_without_first_byte_and_adjusted_for_compression_hex
-}
 fn decode_serialized_extended_key(extended_key_serialized: &str) -> DecodedExtendedKeySerialized {
     // Source (to check work): http://bip32.org/
     let decoded_result = from_check(extended_key_serialized).unwrap();

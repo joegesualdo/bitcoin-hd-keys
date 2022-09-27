@@ -2,16 +2,11 @@ use std::{collections::HashMap, str::FromStr};
 
 use bitcoin::util::taproot::TapTweakHash;
 use bitcoin_hd_keys::{
-    create_fingerprint, generate_bip32_hd_wallet_from_mnemonic_words,
     generate_bip44_hd_wallet_from_mnemonic_words, generate_bip49_hd_wallet_from_mnemonic_words,
     generate_bip84_hd_wallet_from_mnemonic_words, generate_bip86_hd_wallet_from_mnemonic_words,
-    get_128_bits_of_entropy, get_address_from_pub_key, get_address_from_pub_key_hash,
-    get_mnemonic_words, get_p2sh_address_from_script_hash, get_p2tr_address_from_pubkey,
-    get_p2wpkh_address_from_pubkey_hash, get_pubkey_hash_from_p2wpkh_address,
-    get_public_key_hash_from_address, get_public_key_hash_from_non_bech_32_address,
-    get_script_hash_from_p2sh_address, get_tweaked_x_only_public_key_from_p2tr_address,
-    get_wif_from_private_key, hash160_for_hex, AddressType, Network,
+    get_128_bits_of_entropy, get_mnemonic_words,
 };
+use bitcoin_utils::{get_tweaked_x_only_public_key_from_p2tr_address, AddressType, Network};
 use secp256k1::Secp256k1;
 
 const NETWORK: Network = Network::Mainnet;
@@ -137,7 +132,7 @@ fn main() {
         None,
         1,
         0,
-        5,
+        10,
         false,
         Network::Testnet,
     );

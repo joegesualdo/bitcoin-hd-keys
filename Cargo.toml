@@ -1,6 +1,6 @@
 [package]
 name = "bitcoin-hd-keys"
-version = "0.1.16"
+version = "0.1.17"
 edition = "2021"
 description = "Key generation for Hierarchical-Deterministic (HD) Wallets"
 license = "MIT"
@@ -9,7 +9,7 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bitcoin = "0.29.1"
+bitcoin = "=0.29.1"
 bs58 = { version = "=0.4.0", features = ["check", "alloc", "std", "sha2"] }
 hmac-sha512 = "1.1.2"
 num-bigint = "0.4.3"
@@ -23,3 +23,6 @@ sha2 = "0.10.5"
 sha256 = "=1.0.3"
 bitcoin-bech32 = "=0.12.1"
 bitcoin-address = "=0.1.4"
+hex-utilities = "=0.1.4"
+binary-utils= "=0.1.1"
+bitcoin-utils= "=0.1.0"
