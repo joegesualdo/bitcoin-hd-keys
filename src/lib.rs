@@ -22,7 +22,7 @@ use sha2::{Digest, Sha256};
 
 use hex_utilities::{
     convert_decimal_to_32_byte_hex, convert_decimal_to_8_byte_hex, convert_hex_to_decimal,
-    decode_hex, encode_hex,
+    decode_hex, encode_hex, get_hex_string_from_byte_array,
 };
 
 // TODO: Maybe also incorporate 'h' in addition to '
@@ -142,19 +142,7 @@ pub enum DecodedExtendedKeySerialized {
 // - Check work here: https://iancoleman.io/bip39/
 // - https://bitcoin.stackexchange.com/questions/89814/how-does-bip-39-mnemonic-work
 
-fn get_hex_string_from_entropy_byte_array(entropy_byte_array: &[u8]) -> String {
-    // Use that array to then create a length 32 array but with hexidecimal values, since we want
-    // each item of the array to represent only 4 bits, which is how many bits a hex represents
-    let entropy_array_with_base_16_numbers: Vec<u8> =
-        entropy_byte_array.iter().map(|num| num % 16).collect();
-    // turn hex byte array into hex string
-    let hex_string = entropy_array_with_base_16_numbers
-        .iter()
-        .map(|byte| format!("{:x}", byte))
-        .collect::<String>();
-    hex_string
-}
-
+// TODO: Use utilties from bitcoin-utils package instead
 fn sha256_entropy_hex_byte_array(hex_byte_array: &Vec<u8>) -> Vec<u8> {
     let mut hasher = Sha256::new();
     // write input message
@@ -656,7 +644,7 @@ pub fn get_256_bits_of_entropy() -> [u8; 64] {
 pub fn get_mnemonic_words(entropy: Vec<u8>) -> Vec<String> {
     //let hex_string = "a4b836c41875815e8b153bc89091f1d85dd1ae47287289f5a50ff23cf41b8d21";
     //let hex_string = "da490f7254f80aa2f7e8dcb3c63a8404";
-    let entropy_hex_string = get_hex_string_from_entropy_byte_array(&entropy);
+    let entropy_hex_string = get_hex_string_from_byte_array(&entropy);
 
     // let entropy_hex_string = "731180c4b776f6b961da802ff55b153f".to_string();
     let entropy_hex_byte_array = decode_hex(&entropy_hex_string).unwrap();
