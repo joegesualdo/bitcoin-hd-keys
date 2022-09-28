@@ -1,6 +1,6 @@
 [package]
 name = "bitcoin-hd-keys"
-version = "0.1.18"
+version = "0.1.19"
 edition = "2021"
 description = "Key generation for Hierarchical-Deterministic (HD) Wallets"
 license = "MIT"
@@ -22,7 +22,7 @@ secp256k1 = { version = "0.24.0", features = ["rand"]}
 sha2 = "0.10.5"
 sha256 = "=1.0.3"
 bitcoin-bech32 = "=0.12.1"
-bitcoin-address = "=0.1.4"
+bitcoin-address = "=0.1.5"
 hex-utilities = "=0.1.5"
 binary-utils= "=0.1.1"
-bitcoin-utils= "=0.1.1"
+bitcoin-utils= "=0.1.2"
