@@ -1,6 +1,6 @@
 [package]
 name = "bitcoin-hd-keys"
-version = "0.1.20"
+version = "0.1.21"
 edition = "2021"
 description = "Key generation for Hierarchical-Deterministic (HD) Wallets"
 license = "MIT"
@@ -25,4 +25,4 @@ bitcoin-bech32 = "=0.12.1"
 bitcoin-address = "=0.1.5"
 hex-utilities = "=0.1.5"
 binary-utils= "=0.1.1"
-bitcoin-utils= "=0.1.2"
+bitcoin-utils= "=0.1.3"
