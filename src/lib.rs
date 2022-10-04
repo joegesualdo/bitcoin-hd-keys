@@ -960,8 +960,8 @@ fn get_bip32_derived_addresses(
 
 #[derive(Debug, Clone)]
 pub struct DerivedAdresses {
-    external: HashMap<String, Keys>,
-    internal: HashMap<String, Keys>,
+    pub external: HashMap<String, Keys>,
+    pub internal: HashMap<String, Keys>,
 }
 
 fn get_derived_addresses_from_5_levels(

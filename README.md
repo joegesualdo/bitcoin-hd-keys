@@ -6,7 +6,7 @@
 > Add package to Cargo.toml file
 ```rust
 [dependencies]
-bitcoin-hd-keys= "0.1.22"
+bitcoin-hd-keys= "0.1.23"
 ```
 
 ## Usage:
