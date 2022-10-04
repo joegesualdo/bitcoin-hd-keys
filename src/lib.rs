@@ -958,15 +958,22 @@ fn get_bip32_derived_addresses(
     found_children
 }
 
+#[derive(Debug, Clone)]
+pub struct DerivedAdresses {
+    external: HashMap<String, Keys>,
+    internal: HashMap<String, Keys>,
+}
+
 fn get_derived_addresses_from_5_levels(
     purpose: u8,
     cointype: i32,
     account: i32,
+    // Remove
     should_include_change_addresses: bool,
     master_keys: &MasterKeys,
     children_count: i32,
     should_harden: bool,
-) -> HashMap<String, Keys> {
+) -> DerivedAdresses {
     let bip44_derivation_path_for_external_chain =
         format!("m/{}'/{}'/{}'/0", purpose, cointype, account.to_string()).to_string(); // Must use with P2PKH
 
@@ -987,19 +994,17 @@ fn get_derived_addresses_from_5_levels(
         should_harden,
     );
 
-    let mut found_childrenn = found_children_for_external_chain.clone();
-    if should_include_change_addresses {
-        let found_children_for_internal_chain = get_derived_addresses_for_derivation_path(
-            &bip44_derivation_path_for_internal_chain,
-            &master_keys,
-            children_count,
-            should_harden,
-        );
-        for (key, value) in found_children_for_internal_chain {
-            found_childrenn.insert(key, value);
-        }
+    let found_children_for_internal_chain = get_derived_addresses_for_derivation_path(
+        &bip44_derivation_path_for_internal_chain,
+        &master_keys,
+        children_count,
+        should_harden,
+    );
+
+    DerivedAdresses {
+        internal: found_children_for_internal_chain,
+        external: found_children_for_external_chain,
     }
-    found_childrenn
 }
 
 // TODO: Create a function to get the Account Extended private/public keys and the bip32 extended
@@ -1011,7 +1016,7 @@ fn get_bip44_derived_addresses(
     master_keys: &MasterKeys,
     children_count: i32,
     should_harden: bool,
-) -> HashMap<String, Keys> {
+) -> DerivedAdresses {
     // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
     // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
     // internal chain is also known as a change address
@@ -1035,7 +1040,7 @@ fn get_bip49_derived_addresses(
     master_keys: &MasterKeys,
     children_count: i32,
     should_harden: bool,
-) -> HashMap<String, Keys> {
+) -> DerivedAdresses {
     // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
     // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
     // internal chain is also known as a change address
@@ -1059,7 +1064,7 @@ fn get_bip84_derived_addresses(
     master_keys: &MasterKeys,
     children_count: i32,
     should_harden: bool,
-) -> HashMap<String, Keys> {
+) -> DerivedAdresses {
     // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
     // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
     // internal chain is also known as a change address
@@ -1083,7 +1088,7 @@ fn get_bip86_derived_addresses(
     master_keys: &MasterKeys,
     children_count: i32,
     should_harden: bool,
-) -> HashMap<String, Keys> {
+) -> DerivedAdresses {
     // Source: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
     // External chain is used for addresses that are meant to be visible outside of the wallet (e.g. for receiving payments). Internal chain is used for addresses which are not meant to be visible outside of the wallet and is used for return transaction change.
     // internal chain is also known as a change address
@@ -1320,12 +1325,29 @@ pub struct HDWalletBip44 {
     pub derivation_path_internal: String,
     pub bip32_extended_private_key_for_internal: String,
     pub bip32_extended_public_key_for_internal: String,
-    pub derived_addresses: HashMap<String, Keys>,
+    pub derived_addresses: DerivedAdresses,
 }
 impl HDWalletBip44 {
     pub fn pretty_print_derived_addressed(&self, network: Network) -> () {
         let address_type = AddressType::P2PKH;
-        for (key, value) in self.derived_addresses.clone() {
+        for (key, value) in self.derived_addresses.external.clone() {
+            let should_compress = true;
+            let public_key_hex = match &value {
+                Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
+                Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
+            };
+            let address = value.get_address(network, address_type);
+            println!(
+                "{} {}  {}   {}    {}      {}",
+                key,
+                address,
+                get_public_key_hash_from_address(&address),
+                get_public_key_hash_from_public_key(&public_key_hex),
+                public_key_hex,
+                value.get_wif(network, should_compress)
+            )
+        }
+        for (key, value) in self.derived_addresses.internal.clone() {
             let should_compress = true;
             let public_key_hex = match &value {
                 Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
@@ -1455,12 +1477,29 @@ pub struct HDWalletBip49 {
     pub derivation_path_internal: String,
     pub bip32_extended_private_key_for_internal: String,
     pub bip32_extended_public_key_for_internal: String,
-    pub derived_addresses: HashMap<String, Keys>,
+    pub derived_addresses: DerivedAdresses,
 }
 impl HDWalletBip49 {
     pub fn pretty_print_derived_addressed(&self, network: Network) -> () {
         let address_type = AddressType::P2SH;
-        for (key, value) in self.derived_addresses.clone() {
+        for (key, value) in self.derived_addresses.external.clone() {
+            let should_compress = true;
+            let public_key_hex = match &value {
+                Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
+                Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
+            };
+            let address = value.get_address(network, address_type);
+            println!(
+                "{} {}  {}   {}      {}",
+                key,
+                address,
+                //get_public_key_hash_from_address(&address),
+                get_public_key_hash_from_public_key(&public_key_hex),
+                public_key_hex,
+                value.get_wif(network, should_compress)
+            )
+        }
+        for (key, value) in self.derived_addresses.internal.clone() {
             let should_compress = true;
             let public_key_hex = match &value {
                 Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
@@ -1590,12 +1629,29 @@ pub struct HDWalletBip84 {
     pub derivation_path_internal: String,
     pub bip32_extended_private_key_for_internal: String,
     pub bip32_extended_public_key_for_internal: String,
-    pub derived_addresses: HashMap<String, Keys>,
+    pub derived_addresses: DerivedAdresses,
 }
 impl HDWalletBip84 {
     pub fn pretty_print_derived_addressed(&self, network: Network) -> () {
         let address_type = AddressType::P2WPKH;
-        for (key, value) in self.derived_addresses.clone() {
+        for (key, value) in self.derived_addresses.external.clone() {
+            let should_compress = true;
+            let public_key_hex = match &value {
+                Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
+                Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
+            };
+            let address = value.get_address(network, address_type);
+            println!(
+                "{} {}  {}   {}    {}      {}",
+                key,
+                address,
+                get_public_key_hash_from_address(&address),
+                get_public_key_hash_from_public_key(&public_key_hex),
+                public_key_hex,
+                value.get_wif(network, should_compress)
+            )
+        }
+        for (key, value) in self.derived_addresses.internal.clone() {
             let should_compress = true;
             let public_key_hex = match &value {
                 Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
@@ -1724,12 +1780,29 @@ pub struct HDWalletBip86 {
     pub derivation_path_internal: String,
     pub bip32_extended_private_key_for_internal: String,
     pub bip32_extended_public_key_for_internal: String,
-    pub derived_addresses: HashMap<String, Keys>,
+    pub derived_addresses: DerivedAdresses,
 }
 impl HDWalletBip86 {
     pub fn pretty_print_derived_addressed(&self, network: Network) -> () {
         let address_type = AddressType::P2TR;
-        for (key, value) in self.derived_addresses.clone() {
+        for (key, value) in self.derived_addresses.internal.clone() {
+            let should_compress = true;
+            let public_key_hex = match &value {
+                Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
+                Keys::Master(master_keys) => master_keys.public_key_hex.clone(),
+            };
+            let address = value.get_address(network, address_type);
+            println!(
+                "{} {}  {}    {}      {}",
+                key,
+                address,
+                // get_public_key_hash_from_address(&address),
+                get_public_key_hash_from_public_key(&public_key_hex),
+                public_key_hex,
+                value.get_wif(network, should_compress)
+            )
+        }
+        for (key, value) in self.derived_addresses.external.clone() {
             let should_compress = true;
             let public_key_hex = match &value {
                 Keys::NonMaster(non_master_keys) => non_master_keys.public_key_hex.clone(),
