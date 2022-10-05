@@ -41,6 +41,7 @@ pub struct NonMasterKeys {
     pub chain_code_hex: String,
     pub is_hardened: bool,
 }
+
 impl NonMasterKeys {
     pub fn get_wif(&self, network: Network, should_compress: bool) -> String {
         get_wif_from_private_key(&self.private_key_hex, network, should_compress)
